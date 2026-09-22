@@ -1,6 +1,6 @@
 // @ts-nocheck
 
-export function createProcessRuntime() {
+export function createProcessRuntime(options = {}) {
   function processNextTick(callback) {
     if (typeof callback !== "function") {
       throw new TypeError("process.nextTick callback must be a function.");
@@ -75,7 +75,16 @@ export function createProcessRuntime() {
 
     setProcessDefault(processObject, "title", "browser");
     setProcessDefault(processObject, "browser", true);
-    setProcessDefault(processObject, "platform", "browser");
+    if (options.platform) {
+      setProcessValue(processObject, "platform", options.platform);
+    } else {
+      setProcessDefault(processObject, "platform", "browser");
+    }
+    if (options.arch) {
+      setProcessValue(processObject, "arch", options.arch);
+    } else {
+      setProcessDefault(processObject, "arch", "x64");
+    }
     setProcessDefault(processObject, "env", {});
     setProcessDefault(processObject, "argv", []);
     setProcessDefault(processObject, "version", "");

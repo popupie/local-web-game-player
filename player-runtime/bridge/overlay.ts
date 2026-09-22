@@ -27,8 +27,11 @@ export function createTextOverlayBridge({ config, postParentMessage, settings })
     tyranoHooksInstalled: false,
     tyranoObserver: null,
     tyranoScanFrame: 0,
+    construct2HooksInstalled: false,
+    construct2ScanFrame: 0,
     nextDomSourceId: 1,
     canvasTextCaptureDepth: 0,
+    measureContext: null,
     root: null,
     style: null,
   };
@@ -85,6 +88,19 @@ export function createTextOverlayBridge({ config, postParentMessage, settings })
         .mz-player-text-overlay-entry-dom {
           white-space: pre-wrap;
           overflow-wrap: normal;
+        }
+
+        .mz-player-text-overlay-entry-construct2 {
+          white-space: pre;
+          overflow: visible;
+        }
+
+        .mz-player-text-overlay-entry-construct2-line {
+          position: absolute;
+          display: block;
+          white-space: pre;
+          transform-origin: 0 0;
+          user-select: text;
         }
 
         #mz-player-text-overlay.mz-player-text-overlay-readable .mz-player-text-overlay-entry {
@@ -462,6 +478,160 @@ export function createTextOverlayBridge({ config, postParentMessage, settings })
 
     if (install()) return;
     setTimeout(installTyranoOverlayHooks, 250);
+  }
+
+  function installConstruct2OverlayHooks() {
+    if (overlayState.construct2HooksInstalled) return;
+    overlayState.construct2HooksInstalled = true;
+
+    const scan = () => {
+      overlayState.construct2ScanFrame = 0;
+      scanConstruct2Text();
+      overlayState.construct2ScanFrame = requestAnimationFrame(scan);
+    };
+
+    overlayState.construct2ScanFrame = requestAnimationFrame(scan);
+  }
+
+  function scanConstruct2Text() {
+    if (!overlayIsActive()) return;
+    const runtime = construct2Runtime();
+    if (!runtime || !Array.isArray(runtime.types_by_index)) return;
+
+    const seen = new Set();
+    for (const type of runtime.types_by_index) {
+      if (!isConstruct2TextType(type) || !Array.isArray(type.instances)) continue;
+      for (const source of type.instances) {
+        if (!construct2SourceIsVisible(source)) continue;
+        const text = construct2SourceText(source);
+        if (!text) continue;
+        const rect = construct2PageRect(runtime, source);
+        if (!rect) continue;
+
+        const key = `construct2:${domSourceId(source)}`;
+        seen.add(key);
+        upsertEntry(key, {
+          constructSource: source,
+          constructRect: rect,
+          text,
+          width: rect.width,
+          height: rect.height,
+          fontSize: rect.fontSize,
+          fontFace: source.facename || "sans-serif",
+          textAlign: construct2TextAlign(source.halign),
+          updatedAt: performance.now(),
+        });
+      }
+    }
+
+    for (const [key, entry] of overlayState.entries) {
+      if (entry.constructSource && !seen.has(key)) removeEntry(key, entry);
+    }
+  }
+
+  function construct2Runtime() {
+    try {
+      return window.cr_getC2Runtime?.() || window.c2runtime || null;
+    } catch {
+      return window.c2runtime || null;
+    }
+  }
+
+  function isConstruct2TextType(type) {
+    const plugins = window.cr?.plugins_;
+    const plugin = type?.plugin;
+    if (!plugins || !plugin) return false;
+    return [plugins.Text, plugins.Spritefont2].some(
+      (Plugin) => typeof Plugin === "function" && plugin instanceof Plugin,
+    );
+  }
+
+  function construct2SourceText(source) {
+    try {
+      source.rebuildText?.();
+    } catch {
+      // A partially initialized text instance still exposes its raw text.
+    }
+    if (Array.isArray(source.lines) && source.lines.length > 0) {
+      const lines = source.lines.map((line) => String(line?.text ?? ""));
+      if (lines.some(Boolean)) return lines.join("\n");
+    }
+    return String(source.text ?? "");
+  }
+
+  function construct2SourceIsVisible(source) {
+    if (!source || source.visible === false || Number(source.opacity) === 0) return false;
+    const layer = source.layer;
+    if (!layer || layer.visible === false || Number(layer.opacity) === 0) return false;
+    return true;
+  }
+
+  function construct2PageRect(runtime, source) {
+    const canvas = runtime.canvas || document.querySelector("#c2canvas");
+    const layer = source.layer;
+    if (!(canvas instanceof HTMLCanvasElement) || !layer) return null;
+
+    try {
+      source.update_bbox?.();
+    } catch {
+      return null;
+    }
+    const quad = source.bquad;
+    if (!quad) return null;
+
+    const points = [
+      [quad.tlx, quad.tly],
+      [quad.trx, quad.try_],
+      [quad.brx, quad.bry],
+      [quad.blx, quad.bly],
+    ].map(([x, y]) => ({
+      x: Number(layer.layerToCanvas?.(x, y, true, true)),
+      y: Number(layer.layerToCanvas?.(x, y, false, true)),
+    }));
+    if (points.some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y))) return null;
+
+    const canvasRect = canvas.getBoundingClientRect();
+    if (canvasRect.width <= 0 || canvasRect.height <= 0) return null;
+    const minX = Math.min(...points.map((point) => point.x));
+    const minY = Math.min(...points.map((point) => point.y));
+    const maxX = Math.max(...points.map((point) => point.x));
+    const maxY = Math.max(...points.map((point) => point.y));
+    const scaleX = canvasRect.width / (runtime.draw_width || canvas.width || 1);
+    const scaleY = canvasRect.height / (runtime.draw_height || canvas.height || 1);
+    const left = canvasRect.left + minX * scaleX;
+    const top = canvasRect.top + minY * scaleY;
+    const width = Math.max(1, (maxX - minX) * scaleX);
+    const height = Math.max(1, (maxY - minY) * scaleY);
+    if (
+      left >= canvasRect.right ||
+      top >= canvasRect.bottom ||
+      left + width <= canvasRect.left ||
+      top + height <= canvasRect.top
+    ) {
+      return null;
+    }
+
+    const layerScale = Math.abs(Number(layer.getScale?.()) || 1);
+    const sourceFontSize =
+      Number(source.characterHeight) * (Number(source.characterScale) || 1) ||
+      Number(source.pxHeight) ||
+      24;
+    const lineHeight = sourceFontSize + (Number(source.lineHeight) || Number(source.line_height_offset) || 0);
+    return {
+      left: roundCssPixel(left),
+      top: roundCssPixel(top),
+      width: roundCssPixel(width),
+      height: roundCssPixel(height),
+      fontSize: roundCssPixel(sourceFontSize * layerScale * Math.min(scaleX, scaleY)),
+      lineHeight: roundCssPixel(Math.max(1, lineHeight * layerScale * Math.min(scaleX, scaleY))),
+    };
+  }
+
+  function construct2TextAlign(halign) {
+    const value = Number(halign);
+    if (value >= 0.75) return "right";
+    if (value >= 0.25) return "center";
+    return "left";
   }
 
   function scheduleTyranoScan() {
@@ -998,9 +1168,10 @@ export function createTextOverlayBridge({ config, postParentMessage, settings })
 
   function upsertEntry(key, next) {
     const current = overlayState.entries.get(key) || {};
+    const textChanged = current.text !== next.text;
     Object.assign(current, next);
     overlayState.entries.set(key, current);
-    scheduleTextLog(key, current);
+    if (textChanged) scheduleTextLog(key, current);
     scheduleFlush();
   }
 
@@ -1030,7 +1201,7 @@ export function createTextOverlayBridge({ config, postParentMessage, settings })
   }
 
   function entryIsLoggable(entry) {
-    if (entry?.domSource) return true;
+    if (entry?.domSource || entry?.constructSource) return true;
     const name = entry?.owner?.constructor?.name || "";
     return /^(Window_Message|Window_ChoiceList|Window_NameBox|Window_ScrollText)$/.test(name);
   }
@@ -1063,17 +1234,21 @@ export function createTextOverlayBridge({ config, postParentMessage, settings })
         entry.element = document.createElement(entry.domSource ? "div" : "span");
         entry.element.className = entry.domSource
           ? "mz-player-text-overlay-entry mz-player-text-overlay-entry-dom"
-          : "mz-player-text-overlay-entry";
+          : entry.constructSource
+            ? "mz-player-text-overlay-entry mz-player-text-overlay-entry-construct2"
+            : "mz-player-text-overlay-entry";
         overlayState.root.appendChild(entry.element);
       }
 
-      if (entry.element.textContent !== entry.text) {
+      if (entry.constructSource) {
+        layoutConstruct2Entry(entry, rect);
+      } else if (entry.element.textContent !== entry.text) {
         entry.element.textContent = entry.text;
-        entry.element.setAttribute("aria-label", entry.text);
-        entry.element.dataset.rpgText = entry.text;
-        entry.element.dataset.gameText = entry.text;
-        entry.element.removeAttribute("title");
       }
+      entry.element.setAttribute("aria-label", entry.text);
+      entry.element.dataset.rpgText = entry.text;
+      entry.element.dataset.gameText = entry.text;
+      entry.element.removeAttribute("title");
 
       setStyleIfChanged(entry.element, "left", `${rect.left}px`);
       setStyleIfChanged(entry.element, "top", `${rect.top}px`);
@@ -1109,10 +1284,95 @@ export function createTextOverlayBridge({ config, postParentMessage, settings })
         setStyleIfChanged(entry.element, "paddingRight", scaledCssLength(entry.paddingRight, scaleX));
         setStyleIfChanged(entry.element, "paddingBottom", scaledCssLength(entry.paddingBottom, scaleY));
         setStyleIfChanged(entry.element, "paddingLeft", scaledCssLength(entry.paddingLeft, scaleX));
+      } else if (entry.constructSource) {
+        setStyleIfChanged(entry.element, "font", "");
+        setStyleIfChanged(entry.element, "lineHeight", "");
       } else {
         setStyleIfChanged(entry.element, "font", `${Math.max(1, rect.fontSize)}px ${entry.fontFace || "sans-serif"}`);
         setStyleIfChanged(entry.element, "lineHeight", `${Math.max(1, rect.height)}px`);
       }
+    }
+  }
+
+  function layoutConstruct2Entry(entry, rect) {
+    const source = entry.constructSource;
+    const sourceWidth = Math.abs(Number(source.width));
+    const sourceHeight = Math.abs(Number(source.height));
+    const characterHeight = Number(source.characterHeight);
+    const characterScale = Number(source.characterScale) || 1;
+    const lines = Array.isArray(source.lines)
+      ? source.lines.map((line) => ({
+          text: String(line?.text ?? ""),
+          width: Math.max(0, Number(line?.width) || 0),
+        }))
+      : [];
+    const canPlaceSpritefontLines =
+      Math.abs(Number(source.angle) || 0) < 0.0001 &&
+      sourceWidth > 0 &&
+      sourceHeight > 0 &&
+      characterHeight > 0 &&
+      lines.length > 0;
+
+    if (!canPlaceSpritefontLines) {
+      if (entry.renderedConstructText !== entry.text || entry.constructLineElements) {
+        entry.element.textContent = entry.text;
+        entry.constructLineElements = null;
+        entry.renderedConstructText = entry.text;
+      }
+      setStyleIfChanged(entry.element, "font", `${Math.max(1, rect.fontSize)}px ${entry.fontFace || "sans-serif"}`);
+      setStyleIfChanged(entry.element, "lineHeight", `${Math.max(1, rect.lineHeight || rect.fontSize * 1.2)}px`);
+      return;
+    }
+
+    const lineSignature = lines.map((line) => `${line.width}:${line.text}`).join("\n");
+    if (entry.constructLineSignature !== lineSignature || !entry.constructLineElements) {
+      entry.element.textContent = "";
+      entry.constructLineElements = lines.map((line) => {
+        const element = document.createElement("span");
+        element.className = "mz-player-text-overlay-entry-construct2-line";
+        element.textContent = line.text;
+        entry.element.appendChild(element);
+        return element;
+      });
+      entry.constructLineSignature = lineSignature;
+      entry.renderedConstructText = entry.text;
+    }
+
+    if (!overlayState.measureContext) {
+      overlayState.measureContext = document.createElement("canvas").getContext("2d");
+    }
+    const scaleX = rect.width / sourceWidth;
+    const scaleY = rect.height / sourceHeight;
+    const cellHeight = Math.max(1, characterHeight * characterScale * scaleY);
+    const lineStep = Math.max(
+      1,
+      (characterHeight * characterScale + (Number(source.lineHeight) || 0)) * scaleY,
+    );
+    const fontSize = Math.max(1, cellHeight * 0.78);
+    const font = `${fontSize}px ${entry.fontFace || "sans-serif"}`;
+    const textHeight = Math.max(0, Number(source.textHeight) || 0);
+    const verticalOffset =
+      (Number(source.valign) || 0) * Math.max(0, sourceHeight - textHeight) * scaleY +
+      (Number(source.lineHeight) || 0) * scaleY;
+    const horizontalAlignment = Number(source.halign) || 0;
+    const context = overlayState.measureContext;
+    if (context) context.font = font;
+
+    for (let index = 0; index < entry.constructLineElements.length; index += 1) {
+      const element = entry.constructLineElements[index];
+      const line = lines[index];
+      const targetWidth = Math.max(1, line.width * scaleX);
+      const measuredWidth = Math.max(1, context?.measureText(line.text).width || targetWidth);
+      const lineScaleX = targetWidth / measuredWidth;
+      const left = horizontalAlignment * Math.max(0, sourceWidth - line.width) * scaleX;
+      const top = verticalOffset + index * lineStep;
+
+      setStyleIfChanged(element, "left", `${roundCssPixel(left)}px`);
+      setStyleIfChanged(element, "top", `${roundCssPixel(top)}px`);
+      setStyleIfChanged(element, "height", `${roundCssPixel(cellHeight)}px`);
+      setStyleIfChanged(element, "font", font);
+      setStyleIfChanged(element, "lineHeight", `${roundCssPixel(cellHeight)}px`);
+      setStyleIfChanged(element, "transform", `scaleX(${lineScaleX})`);
     }
   }
 
@@ -1122,6 +1382,7 @@ export function createTextOverlayBridge({ config, postParentMessage, settings })
 
   function entryIsVisible(entry) {
     if (entry.domSource) return domSourceIsVisible(entry.domSource);
+    if (entry.constructSource) return construct2SourceIsVisible(entry.constructSource);
     const owner = entry.owner;
     if (!owner || owner.destroyed || !owner.parent) return false;
     if (!ownerBelongsToActiveScene(owner)) return false;
@@ -1150,6 +1411,7 @@ export function createTextOverlayBridge({ config, postParentMessage, settings })
   }
 
   function toPageRect(entry) {
+    if (entry.constructSource) return entry.constructRect || null;
     if (entry.domSource) {
       const rect = entry.domSource.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return null;
@@ -1301,6 +1563,7 @@ export function createTextOverlayBridge({ config, postParentMessage, settings })
     ensureOverlayDom,
     focusGameTarget,
     installDictionaryGuardInputHooks,
+    installConstruct2OverlayHooks,
     installRpgMakerOverlayHooks,
     installTyranoOverlayHooks,
     refreshOverlayClasses,

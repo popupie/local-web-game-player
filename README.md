@@ -1,9 +1,9 @@
 # Local Web Game Player
 
 Local Web Game Player runs compatible local HTML game exports directly in your
-browser. It supports RPG Maker MV/MZ and TyranoScript games. You can open a
-local game folder or import a ZIP, then play without uploading game files to a
-server.
+browser. It supports RPG Maker MV/MZ, TyranoScript, and Construct 2
+NW.js games. You can open a local game folder or import a ZIP, then play
+without uploading game files to a server.
 
 ## Demo
 
@@ -11,8 +11,9 @@ https://github.com/user-attachments/assets/56beacfb-855d-4bdf-87a2-8c388e0cc9b1
 
 ## Use Case
 
-Many RPG Maker and TyranoScript games are distributed as desktop applications.
-This app is useful when playing web exports on Linux or macOS through a browser.
+Many RPG Maker, TyranoScript, and Construct 2 games are distributed as desktop
+applications. This app is useful when playing web exports on Linux or macOS
+through a browser.
 
 It can also help with language study. The text overlay makes game text easier to
 select with browser tools such as the Yomitan extension. Yomitan is a separate
@@ -74,6 +75,17 @@ GameFolder/
   data/
 ```
 
+Construct 2 NW.js exports commonly use this layout:
+
+```text
+GameFolder/
+  index.html
+  c2runtime.js
+  data.js
+  images/
+  media/
+```
+
 Desktop wrapper files such as Electron's `main.js`, `package.json`, and
 `node_modules` are not needed for browser playback. The player automatically
 uses browser storage for TyranoScript exports that were configured for desktop
@@ -84,6 +96,21 @@ file saves.
 Extraction does not guarantee browser compatibility. Games that depend on
 unsupported Electron or Node.js APIs may still fail. Encrypted or DRM-protected
 packages are also not supported.
+
+### NW.js games packaged as `package.nw`
+
+The player does not extract `package.nw` automatically. A typical Construct 2
+`package.nw` is a ZIP archive, so extract it into a new folder with an archive
+tool or the command line:
+
+```sh
+unzip "/path/to/package.nw" -d "./nw_extract"
+```
+
+Open the extracted folder that directly contains `index.html`. Construct 2
+exports normally also contain `c2runtime.js` and `data.js`. The player serves
+the extracted images, audio, scripts, and other assets as separate files when
+the game requests them; it does not load `package.nw` as one large asset.
 
 ### Electron games packaged as `app.asar`
 

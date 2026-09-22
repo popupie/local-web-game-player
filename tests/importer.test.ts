@@ -3,12 +3,17 @@ import JSZip from "jszip";
 import { candidateFromDirectoryHandle, candidateFromFolder, candidateFromZip, decodeZipFileName } from "../src/lib/importer";
 import type { BrowserFileSystemDirectoryHandle, BrowserFileSystemFileHandle } from "../src/lib/storage";
 
-function fileHandle(name: string, contents: number | string): BrowserFileSystemFileHandle {
+function fileHandle(name: string, contents: number | string | Uint8Array): BrowserFileSystemFileHandle {
   return {
     kind: "file",
     name,
     async getFile() {
-      return new File([typeof contents === "number" ? new Uint8Array(contents) : contents], name);
+      const body = typeof contents === "number"
+        ? new Uint8Array(contents)
+        : typeof contents === "string"
+          ? contents
+          : Uint8Array.from(contents);
+      return new File([body], name);
     },
     async createWritable() {
       throw new Error("Test file handles are read-only.");
@@ -44,9 +49,14 @@ function directoryHandle(
   };
 }
 
-function webkitFile(path: string, contents: number | string): File {
+function webkitFile(path: string, contents: number | string | Uint8Array): File {
   const name = path.split("/").at(-1) ?? path;
-  const file = new File([typeof contents === "number" ? new Uint8Array(contents) : contents], name);
+  const body = typeof contents === "number"
+    ? new Uint8Array(contents)
+    : typeof contents === "string"
+      ? contents
+      : Uint8Array.from(contents);
+  const file = new File([body], name);
   Object.defineProperty(file, "webkitRelativePath", {
     value: path,
   });
@@ -140,6 +150,19 @@ describe("folder handle scanning", () => {
 
     expect(candidate.title).toBe("Inner");
   });
+
+  it("uses an extracted Construct 2 game's HTML title", async () => {
+    const handle = directoryHandle("nw_extract", {
+      "index.html": fileHandle("index.html", "<title>Arcana Heat and Cold</title>"),
+      "c2runtime.js": fileHandle("c2runtime.js", 20),
+      "data.js": fileHandle("data.js", 30),
+    });
+
+    const candidate = await candidateFromDirectoryHandle(handle);
+
+    expect(candidate.title).toBe("Arcana Heat and Cold");
+    expect(candidate.entryPath).toBe("index.html");
+  });
 });
 
 describe("webkit folder scanning", () => {
@@ -197,6 +220,19 @@ describe("webkit folder scanning", () => {
 
     expect(candidate.title).toBe("Inner");
     expect(candidate.entryPath).toBe("Outer/Inner/index.html");
+  });
+
+  it("uses an extracted Construct 2 game's HTML title", async () => {
+    const files = [
+      webkitFile("nw_extract/index.html", "<html><head><title>Arcana Heat and Cold</title></head></html>"),
+      webkitFile("nw_extract/c2runtime.js", 20),
+      webkitFile("nw_extract/data.js", 30),
+    ];
+
+    const candidate = await candidateFromFolder(files);
+
+    expect(candidate.title).toBe("Arcana Heat and Cold");
+    expect(candidate.entryPath).toBe("index.html");
   });
 });
 

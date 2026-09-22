@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { createCryptoRuntime } from "./desktop/crypto";
+import { EventEmitter } from "events";
 import { createFsRuntime } from "./desktop/fs";
 import { createNwRuntime } from "./desktop/nw";
 import { createProcessRuntime } from "./desktop/process";
@@ -628,8 +629,59 @@ import { createPathRuntime } from "./desktop/path";
     enhancedBytes,
   });
 
-  const processModule = createProcessRuntime();
+  const hasSteam4C2Bridge = config.files.some((file) =>
+    /(?:^|\/)Steam4C2\.js$/iu.test(String(file.path).replace(/\\+/g, "/")),
+  );
+  const processModule = createProcessRuntime(
+    hasSteam4C2Bridge ? { platform: "win32", arch: "x64" } : {},
+  );
+  const osModule = {
+    EOL: processModule.platform === "win32" ? "\r\n" : "\n",
+    arch: () => processModule.arch || "x64",
+    endianness: () => "LE",
+    homedir: () => "/home/web-user",
+    hostname: () => "browser-player",
+    platform: () => processModule.platform || "browser",
+    release: () => "",
+    tmpdir: () => "/tmp",
+    type: () => processModule.platform === "win32" ? "Windows_NT" : "Browser",
+  };
+  const childProcessModule = {
+    exec(_command, options, callback) {
+      const done = typeof options === "function" ? options : callback;
+      const child = new EventEmitter();
+      child.pid = 0;
+      child.killed = false;
+      child.kill = () => {
+        child.killed = true;
+        return true;
+      };
+      Promise.resolve().then(() => {
+        if (typeof done === "function") done(null, "", "");
+        child.emit("exit", 0, null);
+        child.emit("close", 0, null);
+      });
+      return child;
+    },
+  };
   const commonJsModuleCache = new Map();
+  const steamNativeFallback = {
+    _steam_events: { on() {} },
+    initAPI: () => false,
+    getSteamId: () => null,
+    getCloudQuota(success) {
+      if (typeof success === "function") success(0, 0);
+    },
+    getNumberOfAchievements: () => 0,
+    getAchievementNames: () => [],
+    getCurrentGameLanguage: () => "english",
+    getCurrentUILanguage: () => "english",
+    GetAppID: () => 0,
+    isGameOverlayEnabled: () => false,
+    isCloudEnabled: () => false,
+    isCloudEnabledForUser: () => false,
+    IsBPMode: () => false,
+  };
 
   const modules = {
     path: pathModule,
@@ -642,7 +694,25 @@ import { createPathRuntime } from "./desktop/path";
     "node:process": processModule,
     buffer: bufferModule,
     "node:buffer": bufferModule,
+    events: { EventEmitter },
+    "node:events": { EventEmitter },
+    os: osModule,
+    "node:os": osModule,
+    child_process: childProcessModule,
+    "node:child_process": childProcessModule,
   };
+
+  function isSteamNativeModule(name) {
+    return /(?:^|\/)Steam4C2-(?:win|linux|osx)(?:32|64)$/iu.test(
+      String(name).replace(/\\+/g, "/").replace(/\.node$/iu, ""),
+    );
+  }
+
+  function isSteam4C2BridgeModule(name) {
+    return /(?:^|\/)Steam4C2$/iu.test(
+      String(name).replace(/\\+/g, "/").replace(/\.js$/iu, ""),
+    );
+  }
 
   function resolvePackagedModule(name, parentFilename) {
     const request = String(name).replace(/\\+/g, "/");
@@ -723,6 +793,7 @@ import { createPathRuntime } from "./desktop/path";
           "__filename",
           "__dirname",
           "Buffer",
+          "process",
           source + "\n//# sourceURL=" + filename,
         );
         factory(
@@ -732,6 +803,7 @@ import { createPathRuntime } from "./desktop/path";
           filename,
           dirname(filename),
           BrowserBuffer,
+          processModule,
         );
       }
       module.loaded = true;
@@ -744,6 +816,9 @@ import { createPathRuntime } from "./desktop/path";
 
   function mzPlayerRequire(name, parentFilename = "/www/index.html") {
     const key = String(name);
+    if (isSteam4C2BridgeModule(key) || isSteamNativeModule(key)) {
+      return steamNativeFallback;
+    }
     if (Object.prototype.hasOwnProperty.call(modules, key)) {
       return modules[key];
     }
@@ -775,6 +850,10 @@ import { createPathRuntime } from "./desktop/path";
       "modules.manifestCommonJS",
       "buffer.commonJS",
       "buffer.global",
+      "events.commonJS",
+      "os.commonJS",
+      "childProcess.noop",
+      "native.steamFallback",
     ]),
     entryId: config.entryId,
     fs: fsModule,

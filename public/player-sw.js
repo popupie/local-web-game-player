@@ -4,8 +4,8 @@ const GAME_STORE = "games";
 const FILE_STORE = "files";
 const BLOB_STORE = "blobs";
 const HANDLE_STORE = "handles";
-const PLAYER_DESKTOP_RUNTIME_VERSION = "desktop-api-1";
-const PLAYER_BRIDGE_RUNTIME_VERSION = "bridge-api-2";
+const PLAYER_DESKTOP_RUNTIME_VERSION = "desktop-api-5";
+const PLAYER_BRIDGE_RUNTIME_VERSION = "bridge-api-5";
 const SESSION_FILE_TIMEOUT_MS = 10000;
 const EMPTY_SOURCE_MAP_TEXT = "{\"version\":3,\"sources\":[],\"mappings\":\"\"}";
 const RPG_MAKER_ENCRYPTED_HEADER_BYTES = Uint8Array.from([
@@ -822,6 +822,18 @@ function adaptTyranoConfig(text) {
   );
 }
 
+function isSteam4C2BridgePath(path) {
+  const normalized = normalizePath(path).toLowerCase();
+  return normalized === "steam4c2.js" || normalized.endsWith("/steam4c2.js");
+}
+
+function adaptSteam4C2Bridge(text) {
+  return text.replace(
+    /\bmodule\.exports\s*=\s*Steam4C2\s*;/gu,
+    'if (typeof module !== "undefined" && module) module.exports = Steam4C2;',
+  );
+}
+
 async function transformAssetBlobForRequest(gameId, match, blob, requestClientId) {
   if (isExactAssetRequestMatch(match)) {
     return { blob };
@@ -951,6 +963,13 @@ async function serveGameFile(url, request) {
       headers.set("Content-Type", "text/plain; charset=utf-8");
       return new Response(config, { status: 200, headers });
     }
+  }
+
+  if (isSteam4C2BridgePath(record.path)) {
+    return new Response(adaptSteam4C2Bridge(await responseBlob.text()), {
+      status: 200,
+      headers,
+    });
   }
 
   if ((record.mime || "").startsWith("text/html")) {

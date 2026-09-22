@@ -118,6 +118,7 @@ const manifestConfig = {
     { path: "www/index.html", url: "/play/game-1/www/index.html", size: 11, mimeType: "text/html", name: "index.html" },
     { path: "www/js/app.js", url: "/play/game-1/www/js/app.js", size: 15, mimeType: "text/javascript", name: "app.js" },
     { path: "www/js/config.json", url: "/play/game-1/www/js/config.json", size: 13, mimeType: "application/json", name: "config.json" },
+    { path: "Steam4C2.js", url: "/play/game-1/Steam4C2.js", size: 360, mimeType: "text/javascript", name: "Steam4C2.js" },
   ],
 };
 
@@ -184,9 +185,15 @@ describe("desktop globals", () => {
     clipboardShim.set("copied");
     expect(nwGuiModule.Clipboard.get().get()).toBe("copied");
     expect(nwGuiModule.Window.get().removeAllListeners()).toBe(nwGuiModule.Window.get());
+    expect(nwGuiModule.Window.get().enterFullscreen()).toBeUndefined();
+    expect(nwGuiModule.Window.get().leaveFullscreen()).toBeUndefined();
 
     const processModule = createProcessRuntime() as any;
     expect(processModule.cwd()).toBe("/www");
+
+    const windowsProcess = createProcessRuntime({ platform: "win32", arch: "x64" }) as any;
+    expect(windowsProcess.platform).toBe("win32");
+    expect(windowsProcess.arch).toBe("x64");
 
     const cryptoModule = createCryptoRuntime({
       browserCryptoModule: {},
@@ -199,6 +206,7 @@ describe("desktop globals", () => {
     installWindowShim({
       "/play/game-1/www/js/app.js": "module.exports = { value: require('./config.json').answer };",
       "/play/game-1/www/js/config.json": "{\"answer\":42}",
+      "/play/game-1/Steam4C2.js": "<html>This response must not be compiled as JavaScript.</html>",
     });
     const browserWindow = (globalThis as RuntimeGlobal).window;
     Object.defineProperty(browserWindow, "__MZ_PLAYER_DESKTOP_CONFIG", {
@@ -221,6 +229,19 @@ describe("desktop globals", () => {
     expect(runtimeRequire?.("path").join("www", "save", "file1.rpgsave")).toBe("www/save/file1.rpgsave");
     expect(runtimeRequire?.("fs").existsSync("www/index.html")).toBe(true);
     expect(runtimeRequire?.("nw.gui").Window.get().removeAllListeners()).toBe(runtimeRequire?.("nw.gui").Window.get());
+    expect(typeof runtimeRequire?.("events").EventEmitter).toBe("function");
+    expect(runtimeRequire?.("os").homedir()).toBe("/home/web-user");
+    expect(runtimeRequire?.("os").platform()).toBe("win32");
+    await new Promise<void>((resolve) => {
+      runtimeRequire?.("child_process").exec("ignored", (error: Error | null, stdout: string, stderr: string) => {
+        expect(error).toBeNull();
+        expect(stdout).toBe("");
+        expect(stderr).toBe("");
+        resolve();
+      });
+    });
+    expect(runtimeRequire?.("./Steam4C2-win64").initAPI()).toBe(false);
+    expect(runtimeRequire?.("./Steam4C2").initAPI()).toBe(false);
     expect(runtimeRequire?.("/www/js/app.js")).toEqual({ value: 42 });
     expect(Buffer.from("ok").toString("utf8")).toBe("ok");
   });
