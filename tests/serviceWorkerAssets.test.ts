@@ -195,3 +195,15 @@ describe("service worker Tyrano compatibility helpers", () => {
     expect(html).toContain("__MZ_PLAYER_DESKTOP_CONFIG");
   });
 });
+
+describe("service worker Construct 2 NW.js compatibility helpers", () => {
+  it("keeps Steam4C2 usable as both a page script and CommonJS module", () => {
+    const helpers = loadServiceWorkerHelpers();
+    const source = "var Steam4C2 = {}; module.exports = Steam4C2;";
+    const adapted = helpers.adaptSteam4C2Bridge(source);
+
+    expect(helpers.isSteam4C2BridgePath("Steam4C2.js")).toBe(true);
+    expect(adapted).toContain('typeof module !== "undefined"');
+    expect(adapted).not.toContain("; module.exports = Steam4C2;");
+  });
+});
