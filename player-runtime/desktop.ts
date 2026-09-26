@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { createCryptoRuntime } from "./desktop/crypto";
 import { EventEmitter } from "events";
+import * as streamModule from "stream";
 import { createFsRuntime } from "./desktop/fs";
 import { createNwRuntime } from "./desktop/nw";
 import { createProcessRuntime } from "./desktop/process";
@@ -506,7 +507,7 @@ import { createPathRuntime } from "./desktop/path";
       error instanceof Error &&
       (
         error.message.startsWith(
-          "Local Web Game Player cannot provide Node module:",
+          "Local Web Game Player cannot provide Node module",
         ) ||
         error.message.startsWith(
           "Local Web Game Player cannot resolve packaged module",
@@ -572,7 +573,7 @@ import { createPathRuntime } from "./desktop/path";
     pathModule,
   } = pathRuntime;
 
-  const { clipboardShim, nwGuiModule, nwModule, windowShim } = createNwRuntime();
+  const { clipboardShim, electronModule, nwGuiModule, nwModule, windowShim } = createNwRuntime();
 
   function bytesToHex(bytes) {
     let output = "";
@@ -635,36 +636,121 @@ import { createPathRuntime } from "./desktop/path";
   const processModule = createProcessRuntime(
     hasSteam4C2Bridge ? { platform: "win32", arch: "x64" } : {},
   );
+  const hardwareConcurrency = Math.max(1, Number(window.navigator?.hardwareConcurrency) || 1);
+  const approximateMemory = Math.max(1, Number(window.navigator?.deviceMemory) || 4) * 1024 ** 3;
   const osModule = {
     EOL: processModule.platform === "win32" ? "\r\n" : "\n",
+    constants: Object.freeze({ errno: {}, signals: {} }),
     arch: () => processModule.arch || "x64",
+    availableParallelism: () => hardwareConcurrency,
+    cpus: () => Array.from({ length: hardwareConcurrency }, (_, index) => ({
+      model: "Browser CPU " + (index + 1),
+      speed: 0,
+      times: { idle: 0, irq: 0, nice: 0, sys: 0, user: 0 },
+    })),
     endianness: () => "LE",
+    freemem: () => Math.floor(approximateMemory / 2),
     homedir: () => "/home/web-user",
     hostname: () => "browser-player",
+    loadavg: () => [0, 0, 0],
+    machine: () => processModule.arch || "x64",
+    networkInterfaces: () => ({}),
     platform: () => processModule.platform || "browser",
     release: () => "",
     tmpdir: () => "/tmp",
+    totalmem: () => approximateMemory,
     type: () => processModule.platform === "win32" ? "Windows_NT" : "Browser",
+    userInfo: () => ({
+      gid: -1,
+      homedir: "/home/web-user",
+      shell: null,
+      uid: -1,
+      username: "web-user",
+    }),
+    version: () => "Browser",
   };
+  const noop = () => undefined;
+  function createChildProcess() {
+    const child = new EventEmitter();
+    const createPipe = () => {
+      const pipe = new EventEmitter();
+      pipe.readable = true;
+      pipe.writable = true;
+      pipe.write = () => true;
+      pipe.end = () => pipe.emit("finish");
+      pipe.destroy = noop;
+      pipe.setEncoding = () => pipe;
+      pipe.pipe = () => pipe;
+      return pipe;
+    };
+    child.pid = 0;
+    child.killed = false;
+    child.connected = false;
+    child.stdin = createPipe();
+    child.stdout = createPipe();
+    child.stderr = createPipe();
+    child.kill = () => {
+      child.killed = true;
+      return true;
+    };
+    child.disconnect = noop;
+    child.ref = () => child;
+    child.send = (_message, callback) => {
+      if (typeof callback === "function") queueMicrotask(() => callback(null));
+      return false;
+    };
+    child.unref = () => child;
+    queueMicrotask(() => {
+      child.emit("spawn");
+      child.emit("exit", 0, null);
+      child.emit("close", 0, null);
+    });
+    return child;
+  }
+
+  function noopOutput(options) {
+    const encoding = typeof options === "string" ? options : options?.encoding;
+    return encoding && encoding !== "buffer" ? "" : BrowserBuffer.alloc(0);
+  }
+
   const childProcessModule = {
     exec(_command, options, callback) {
       const done = typeof options === "function" ? options : callback;
-      const child = new EventEmitter();
-      child.pid = 0;
-      child.killed = false;
-      child.kill = () => {
-        child.killed = true;
-        return true;
-      };
+      const child = createChildProcess();
       Promise.resolve().then(() => {
         if (typeof done === "function") done(null, "", "");
-        child.emit("exit", 0, null);
-        child.emit("close", 0, null);
       });
       return child;
     },
+    execFile(_file, args, options, callback) {
+      if (typeof args === "function") return this.exec("", args);
+      if (typeof options === "function") return this.exec("", options);
+      return this.exec("", options, callback);
+    },
+    execFileSync(_file, args, options) {
+      return noopOutput(Array.isArray(args) ? options : args);
+    },
+    execSync(_command, options) {
+      return noopOutput(options);
+    },
+    fork: () => createChildProcess(),
+    spawn: () => createChildProcess(),
+    spawnSync(_command, args, options) {
+      const output = noopOutput(Array.isArray(args) ? options : args);
+      return { error: undefined, output: [null, output, output], pid: 0, signal: null, status: 0, stderr: output, stdout: output };
+    },
   };
   const commonJsModuleCache = new Map();
+  const commonJsRequireCache = Object.create(null);
+  const mainModule = {
+    children: [],
+    exports: {},
+    filename: "/www/index.html",
+    id: ".",
+    loaded: true,
+    parent: null,
+    paths: ["/www/node_modules", "/node_modules"],
+  };
   const steamNativeFallback = {
     _steam_events: { on() {} },
     initAPI: () => false,
@@ -683,11 +769,162 @@ import { createPathRuntime } from "./desktop/path";
     IsBPMode: () => false,
   };
 
+  const utilModule = {
+    callbackify(fn) {
+      return function callbackified() {
+        const args = Array.from(arguments);
+        const callback = args.pop();
+        Promise.resolve(fn.apply(this, args)).then(
+          (value) => callback(null, value),
+          (error) => callback(error),
+        );
+      };
+    },
+    format(format) {
+      if (typeof format !== "string") return Array.from(arguments).map(String).join(" ");
+      const values = Array.prototype.slice.call(arguments, 1);
+      let index = 0;
+      const output = format.replace(/%[sdijo%]/gu, (token) => {
+        if (token === "%%") return "%";
+        if (index >= values.length) return token;
+        const value = values[index++];
+        if (token === "%d" || token === "%i") return String(Number(value));
+        if (token === "%j" || token === "%o") {
+          try { return JSON.stringify(value); } catch { return "[Circular]"; }
+        }
+        return String(value);
+      });
+      return [output, ...values.slice(index).map(String)].join(" ");
+    },
+    inherits(constructor, superConstructor) {
+      if (typeof constructor !== "function" || typeof superConstructor !== "function") return;
+      Object.setPrototypeOf(constructor.prototype, superConstructor.prototype);
+      Object.setPrototypeOf(constructor, superConstructor);
+      constructor.super_ = superConstructor;
+    },
+    inspect(value) {
+      if (typeof value === "string") return value;
+      try { return JSON.stringify(value); } catch { return String(value); }
+    },
+    promisify(fn) {
+      return function promisified() {
+        const args = Array.from(arguments);
+        return new Promise((resolve, reject) => {
+          fn.apply(this, args.concat((error, value) => error ? reject(error) : resolve(value)));
+        });
+      };
+    },
+    types: {
+      isAnyArrayBuffer: (value) => value instanceof ArrayBuffer,
+      isArrayBufferView: (value) => ArrayBuffer.isView(value),
+      isDate: (value) => value instanceof Date,
+      isNativeError: (value) => value instanceof Error,
+      isPromise: (value) => Boolean(value && typeof value.then === "function"),
+      isRegExp: (value) => value instanceof RegExp,
+      isTypedArray: (value) => ArrayBuffer.isView(value) && !(value instanceof DataView),
+    },
+  };
+
+  function assertionError(actual, expected, message, operator) {
+    const error = new Error(message || "Assertion failed: " + operator);
+    error.name = "AssertionError";
+    error.code = "ERR_ASSERTION";
+    error.actual = actual;
+    error.expected = expected;
+    error.operator = operator;
+    return error;
+  }
+
+  function assertModule(value, message) {
+    if (!value) throw assertionError(value, true, message, "==");
+  }
+  assertModule.ok = assertModule;
+  assertModule.equal = (actual, expected, message) => {
+    if (actual != expected) throw assertionError(actual, expected, message, "==");
+  };
+  assertModule.strictEqual = (actual, expected, message) => {
+    if (actual !== expected) throw assertionError(actual, expected, message, "strictEqual");
+  };
+  assertModule.notStrictEqual = (actual, expected, message) => {
+    if (actual === expected) throw assertionError(actual, expected, message, "notStrictEqual");
+  };
+  assertModule.deepStrictEqual = (actual, expected, message) => {
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+      throw assertionError(actual, expected, message, "deepStrictEqual");
+    }
+  };
+  assertModule.fail = (message) => { throw assertionError(undefined, undefined, message, "fail"); };
+
+  const querystringModule = {
+    escape: encodeURIComponent,
+    unescape: decodeURIComponent,
+    stringify(value) {
+      const params = new URLSearchParams();
+      for (const [key, entry] of Object.entries(value || {})) {
+        for (const item of Array.isArray(entry) ? entry : [entry]) params.append(key, String(item ?? ""));
+      }
+      return params.toString();
+    },
+    parse(value) {
+      const output = Object.create(null);
+      for (const [key, entry] of new URLSearchParams(String(value ?? ""))) {
+        if (output[key] === undefined) output[key] = entry;
+        else output[key] = Array.isArray(output[key]) ? output[key].concat(entry) : [output[key], entry];
+      }
+      return output;
+    },
+  };
+
+  const urlModule = {
+    URL: window.URL || URL,
+    URLSearchParams: window.URLSearchParams || URLSearchParams,
+    domainToASCII: (value) => String(value ?? ""),
+    domainToUnicode: (value) => String(value ?? ""),
+    fileURLToPath(value) {
+      const url = value instanceof URL ? value : new URL(String(value));
+      if (url.protocol !== "file:") throw new TypeError("URL must use the file: protocol.");
+      return decodeURIComponent(url.pathname);
+    },
+    pathToFileURL(value) {
+      const path = String(value ?? "").replace(/\\+/g, "/");
+      return new URL("file://" + (path.startsWith("/") ? "" : "/") + path.split("/").map(encodeURIComponent).join("/"));
+    },
+    parse(value, parseQueryString) {
+      const parsed = new URL(String(value), window.location.href || window.location.origin);
+      return {
+        auth: parsed.username ? parsed.username + (parsed.password ? ":" + parsed.password : "") : null,
+        hash: parsed.hash,
+        host: parsed.host,
+        hostname: parsed.hostname,
+        href: parsed.href,
+        path: parsed.pathname + parsed.search,
+        pathname: parsed.pathname,
+        port: parsed.port,
+        protocol: parsed.protocol,
+        query: parseQueryString ? querystringModule.parse(parsed.search.slice(1)) : parsed.search.slice(1),
+        search: parsed.search,
+        slashes: true,
+      };
+    },
+  };
+
+  const timersModule = {
+    clearImmediate: window.clearImmediate || window.clearTimeout.bind(window),
+    clearInterval: window.clearInterval.bind(window),
+    clearTimeout: window.clearTimeout.bind(window),
+    setImmediate: window.setImmediate || ((callback, ...args) => window.setTimeout(callback, 0, ...args)),
+    setInterval: window.setInterval.bind(window),
+    setTimeout: window.setTimeout.bind(window),
+  };
+
   const modules = {
     path: pathModule,
+    "node:path": pathModule,
     fs: fsModule,
+    "node:fs": fsModule,
     "nw.gui": nwGuiModule,
     nw: nwModule,
+    electron: electronModule,
     crypto: cryptoModule,
     "node:crypto": cryptoModule,
     process: processModule,
@@ -700,7 +937,68 @@ import { createPathRuntime } from "./desktop/path";
     "node:os": osModule,
     child_process: childProcessModule,
     "node:child_process": childProcessModule,
+    assert: assertModule,
+    "node:assert": assertModule,
+    querystring: querystringModule,
+    "node:querystring": querystringModule,
+    stream: streamModule,
+    "node:stream": streamModule,
+    timers: timersModule,
+    "node:timers": timersModule,
+    url: urlModule,
+    "node:url": urlModule,
+    util: utilModule,
+    "node:util": utilModule,
   };
+
+  class StringDecoderShim {
+    constructor(encoding = "utf8") {
+      this.encoding = String(encoding).toLowerCase().replace(/[-_]/gu, "");
+      const decoderEncoding = this.encoding === "utf16le" || this.encoding === "ucs2"
+        ? "utf-16le"
+        : this.encoding === "latin1" || this.encoding === "binary"
+          ? "windows-1252"
+          : "utf-8";
+      this.decoder = new TextDecoder(decoderEncoding);
+    }
+    write(value) {
+      const bytes = ArrayBuffer.isView(value)
+        ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+        : new Uint8Array(value);
+      return this.decoder.decode(bytes, { stream: true });
+    }
+    end(value) {
+      return (value === undefined ? "" : this.write(value)) + this.decoder.decode();
+    }
+  }
+  const stringDecoderModule = { StringDecoder: StringDecoderShim };
+  modules.string_decoder = stringDecoderModule;
+  modules["node:string_decoder"] = stringDecoderModule;
+  modules.constants = fsModule.constants;
+  modules["node:constants"] = fsModule.constants;
+  const ttyModule = { isatty: () => false };
+  modules.tty = ttyModule;
+  modules["node:tty"] = ttyModule;
+
+  const moduleModule = {
+    builtinModules: Object.keys(modules).filter((name) => !name.startsWith("node:")),
+    createRequire(filename) {
+      const parentFilename = filename instanceof URL
+        ? urlModule.fileURLToPath(filename)
+        : String(filename || mainModule.filename);
+      const createdRequire = (request) => mzPlayerRequire(request, parentFilename);
+      createdRequire.cache = commonJsRequireCache;
+      createdRequire.main = mainModule;
+      createdRequire.resolve = (request) => mzPlayerRequire.resolve(request, parentFilename);
+      return createdRequire;
+    },
+    isBuiltin(name) {
+      return Object.prototype.hasOwnProperty.call(modules, String(name));
+    },
+  };
+  modules.module = moduleModule;
+  modules["node:module"] = moduleModule;
+  moduleModule.builtinModules.push("module");
 
   function isSteamNativeModule(name) {
     return /(?:^|\/)Steam4C2-(?:win|linux|osx)(?:32|64)$/iu.test(
@@ -714,25 +1012,79 @@ import { createPathRuntime } from "./desktop/path";
     );
   }
 
-  function resolvePackagedModule(name, parentFilename) {
-    const request = String(name).replace(/\\+/g, "/");
-    let candidate;
-    if (request.startsWith("/")) {
-      candidate = normalizePath(request);
-    } else if (request.startsWith("./") || request.startsWith("../")) {
-      candidate = normalizePath(joinPath(dirname(parentFilename), request));
-    } else {
-      candidate = normalizePath(request);
-    }
+  function resolveAsFileOrDirectory(candidate, seen = new Set()) {
+    const normalized = normalizePath(candidate);
+    if (seen.has(normalized)) return null;
+    seen.add(normalized);
 
-    const candidates = [candidate];
-    if (!extname(candidate)) {
-      candidates.push(candidate + ".js", candidate + ".json");
-      candidates.push(joinPath(candidate, "index.js"), joinPath(candidate, "index.json"));
-    }
-    for (const path of candidates) {
+    const fileCandidates = [normalized];
+    if (!extname(normalized)) fileCandidates.push(normalized + ".js", normalized + ".json");
+    for (const path of fileCandidates) {
       const file = lookupManifestFile(path);
       if (file) return file;
+    }
+
+    const packageFile = lookupManifestFile(joinPath(normalized, "package.json"));
+    if (packageFile) {
+      try {
+        const packageData = JSON.parse(readFileSync("/" + manifestKey(packageFile.path), "utf8"));
+        const entry = typeof packageData.browser === "string"
+          ? packageData.browser
+          : typeof packageData.main === "string"
+            ? packageData.main
+            : "";
+        if (entry && entry !== ".") {
+          const resolved = resolveAsFileOrDirectory(joinPath(normalized, entry), seen);
+          if (resolved) return resolved;
+        }
+      } catch (error) {
+        console.warn("[Local Web Game Player package.json]", packageFile.path, error);
+      }
+    }
+
+    for (const path of [joinPath(normalized, "index.js"), joinPath(normalized, "index.json")]) {
+      const file = lookupManifestFile(path);
+      if (file) return file;
+    }
+    return null;
+  }
+
+  function nodeModuleRequestParts(request) {
+    const parts = request.split("/").filter(Boolean);
+    const packagePartCount = request.startsWith("@") ? 2 : 1;
+    return {
+      packageName: parts.slice(0, packagePartCount).join("/"),
+      subpath: parts.slice(packagePartCount).join("/"),
+    };
+  }
+
+  function resolvePackagedModule(name, parentFilename) {
+    const request = String(name).replace(/\\+/g, "/");
+    if (request.startsWith("/") || request.startsWith("./") || request.startsWith("../")) {
+      const candidate = request.startsWith("/")
+        ? normalizePath(request)
+        : normalizePath(joinPath(dirname(parentFilename), request));
+      return resolveAsFileOrDirectory(candidate);
+    }
+
+    const direct = resolveAsFileOrDirectory(request);
+    if (direct) return direct;
+
+    const { packageName, subpath } = nodeModuleRequestParts(request);
+    if (!packageName) return null;
+    let directory = dirname(parentFilename);
+    const candidates = [];
+    while (directory) {
+      candidates.push(joinPath(directory, "node_modules", packageName, subpath));
+      if (directory === "/" || directory === ".") break;
+      const parent = dirname(directory);
+      if (parent === directory) break;
+      directory = parent;
+    }
+    candidates.push(joinPath("/www/node_modules", packageName, subpath));
+    for (const candidate of Array.from(new Set(candidates))) {
+      const resolved = resolveAsFileOrDirectory(candidate);
+      if (resolved) return resolved;
     }
     return null;
   }
@@ -756,12 +1108,17 @@ import { createPathRuntime } from "./desktop/path";
     }
 
     const module = {
+      children: [],
       exports: {},
       filename,
       id: filename,
       loaded: false,
+      parent: commonJsRequireCache[parentFilename] || mainModule,
+      paths: [joinPath(dirname(filename), "node_modules"), "/www/node_modules", "/node_modules"],
     };
     commonJsModuleCache.set(cacheKey, module);
+    commonJsRequireCache[filename] = module;
+    module.parent?.children?.push(module);
 
     try {
       const source = readFileSync(filename, "utf8");
@@ -786,6 +1143,9 @@ import { createPathRuntime } from "./desktop/path";
           }
           return "/" + manifestKey(file.path);
         };
+        localRequire.cache = commonJsRequireCache;
+        localRequire.main = mainModule;
+        module.require = localRequire;
         const factory = new Function(
           "exports",
           "require",
@@ -810,6 +1170,11 @@ import { createPathRuntime } from "./desktop/path";
       return module.exports;
     } catch (error) {
       commonJsModuleCache.delete(cacheKey);
+      delete commonJsRequireCache[filename];
+      if (module.parent?.children) {
+        const index = module.parent.children.indexOf(module);
+        if (index >= 0) module.parent.children.splice(index, 1);
+      }
       throw error;
     }
   }
@@ -826,28 +1191,71 @@ import { createPathRuntime } from "./desktop/path";
     if (manifestFile) {
       return loadPackagedModule(key, parentFilename, manifestFile);
     }
-    throw new Error("Local Web Game Player cannot provide Node module: " + key);
+    throw new Error(
+      "Local Web Game Player cannot provide Node module '" +
+        key +
+        "' requested from '" +
+        parentFilename +
+        "'. Supported built-ins: " +
+        Object.keys(modules).sort().join(", "),
+    );
   }
 
+  mzPlayerRequire.cache = commonJsRequireCache;
+  mzPlayerRequire.main = mainModule;
+  mzPlayerRequire.resolve = function resolve(request, parentFilename = mainModule.filename) {
+    const builtin = String(request);
+    if (Object.prototype.hasOwnProperty.call(modules, builtin)) return builtin;
+    const file = resolvePackagedModule(request, parentFilename);
+    if (!file) throw new Error("Cannot resolve '" + request + "' from '" + parentFilename + "'.");
+    return "/" + manifestKey(file.path);
+  };
+
   const requireBridge = installGlobalRequireBridge(mzPlayerRequire);
+  requireBridge.cache = commonJsRequireCache;
+  requireBridge.main = mainModule;
+  requireBridge.resolve = mzPlayerRequire.resolve;
   nwModule.require = requireBridge;
   nwGuiModule.require = requireBridge;
+  mainModule.require = requireBridge;
+  processModule.mainModule = mainModule;
+
+  function installGlobalValue(name, value) {
+    if (window[name] !== undefined) return;
+    try {
+      Object.defineProperty(window, name, { configurable: true, value, writable: true });
+    } catch {
+      window[name] = value;
+    }
+  }
+
+  installGlobalValue("global", window);
+  installGlobalValue("__filename", mainModule.filename);
+  installGlobalValue("__dirname", dirname(mainModule.filename));
+  installGlobalValue("setImmediate", timersModule.setImmediate);
+  installGlobalValue("clearImmediate", timersModule.clearImmediate);
 
   window.MzPlayerDesktop = Object.freeze({
-    version: 1,
+    version: 2,
     capabilities: Object.freeze([
       "fs.virtualSync",
       "fs.manifestRead",
       "fs.manifestSyncRead",
       "fs.manifestMetadata",
+      "fs.commonNodeApi",
       "path.posix",
+      "path.commonNodeApi",
       "nw.gui.noop",
+      "nw.shell.browserSafe",
       "nw.windowOpen.currentFrame",
       "nw.globalNoop",
+      "electron.browserSafe",
       "crypto.webRandom",
       "crypto.nodeCiphers",
       "process.browserCompat",
       "modules.manifestCommonJS",
+      "modules.nodeModulesResolution",
+      "modules.commonBuiltins",
       "buffer.commonJS",
       "buffer.global",
       "events.commonJS",
@@ -862,6 +1270,8 @@ import { createPathRuntime } from "./desktop/path";
     process: processModule,
     Buffer: BrowserBuffer,
     nw: nwModule,
+    electron: electronModule,
+    os: osModule,
     window: windowShim,
     clipboard: clipboardShim,
     require: requireBridge,

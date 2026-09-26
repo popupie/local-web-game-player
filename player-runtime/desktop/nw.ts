@@ -87,6 +87,7 @@ export function createNwRuntime() {
       "close",
       "emit",
       "enterFullscreen",
+      "toggleFullscreen",
       "show",
       "hide",
       "leaveFullscreen",
@@ -126,9 +127,33 @@ export function createNwRuntime() {
   function createWindowShim() {
     const listeners = new Map();
     let loaded = false;
+    let title = document.title || "Local Web Game Player";
+    let zoomLevel = 0;
+    let fullscreen = false;
     const shim = {
       window,
       [SRD_INTENDED_WINDOW_CODE]: true,
+      get title() {
+        return title;
+      },
+      set title(value) {
+        title = String(value ?? "");
+        try {
+          document.title = title;
+        } catch {
+          // Sandboxed documents may not expose a writable title.
+        }
+      },
+      get zoomLevel() {
+        return zoomLevel;
+      },
+      set zoomLevel(value) {
+        const next = Number(value);
+        zoomLevel = Number.isFinite(next) ? next : 0;
+      },
+      get isFullscreen() {
+        return fullscreen;
+      },
       get width() {
         return playerFrameWidth();
       },
@@ -145,8 +170,15 @@ export function createNwRuntime() {
       close: noop,
       show: noop,
       hide: noop,
-      enterFullscreen: noop,
-      leaveFullscreen: noop,
+      enterFullscreen() {
+        fullscreen = true;
+      },
+      leaveFullscreen() {
+        fullscreen = false;
+      },
+      toggleFullscreen() {
+        fullscreen = !fullscreen;
+      },
       maximize: noop,
       minimize: noop,
       restore: noop,
@@ -250,13 +282,95 @@ export function createNwRuntime() {
     clear: () => {
       clipboardText = "";
     },
+    readText: () => clipboardText,
+    writeText: (value) => {
+      clipboardText = String(value ?? "");
+    },
   };
+  const shellShim = {
+    openExternal(url) {
+      const value = String(url ?? "");
+      if (!/^https?:\/\//iu.test(value) || !browserWindowOpen) return false;
+      browserWindowOpen(value, "_blank", "noopener,noreferrer");
+      return true;
+    },
+    openItem: () => false,
+    showItemInFolder: () => false,
+    moveItemToTrash: () => false,
+  };
+  const appListeners = new Map();
+  function onAppEvent(event, listener) {
+    if (typeof listener !== "function") return nwAppShim;
+    const listeners = appListeners.get(String(event)) || new Set();
+    listeners.add(listener);
+    appListeners.set(String(event), listeners);
+    return nwAppShim;
+  }
   const nwAppShim = {
     argv: [],
+    filteredArgv: [],
     manifest: {},
+    dataPath: "/home/web-user/.local-web-game-player",
+    startPath: "/www",
     clearCache: noop,
     clearAppCache: noop,
     quit: noop,
+    closeAllWindows: noop,
+    on: onAppEvent,
+    once: onAppEvent,
+    removeListener(event, listener) {
+      appListeners.get(String(event))?.delete(listener);
+      return nwAppShim;
+    },
+  };
+  class MenuItemShim {
+    constructor(options = {}) {
+      Object.assign(this, options);
+      this.type = options.type || "normal";
+      this.enabled = options.enabled !== false;
+      this.checked = Boolean(options.checked);
+    }
+  }
+  class MenuShim {
+    constructor(options = {}) {
+      this.type = options.type || "contextmenu";
+      this.items = [];
+    }
+    append(item) {
+      this.items.push(item);
+    }
+    insert(item, index) {
+      this.items.splice(Number(index) || 0, 0, item);
+    }
+    remove(item) {
+      const index = this.items.indexOf(item);
+      if (index >= 0) this.items.splice(index, 1);
+    }
+    popup() {}
+  }
+  class TrayShim {
+    constructor(options = {}) {
+      Object.assign(this, options);
+    }
+    remove() {}
+    on() { return this; }
+  }
+  class ShortcutShim {
+    constructor(options = {}) {
+      Object.assign(this, options);
+    }
+  }
+  const screenShim = {
+    Init: noop,
+    get screens() {
+      return [{
+        bounds: { x: 0, y: 0, width: playerFrameWidth(), height: playerFrameHeight() },
+        work_area: { x: 0, y: 0, width: playerFrameWidth(), height: playerFrameHeight() },
+        scaleFactor: window.devicePixelRatio || 1,
+        isBuiltIn: true,
+        id: 0,
+      }];
+    },
   };
   const nwGuiModule = {
     App: nwAppShim,
@@ -264,6 +378,12 @@ export function createNwRuntime() {
     Clipboard: {
       get: () => clipboardShim,
     },
+    Menu: MenuShim,
+    MenuItem: MenuItemShim,
+    Screen: screenShim,
+    Shell: shellShim,
+    Shortcut: ShortcutShim,
+    Tray: TrayShim,
   };
 
   function installNwCompatibility() {
@@ -294,6 +414,9 @@ export function createNwRuntime() {
     if (!nwObject.Clipboard || typeof nwObject.Clipboard !== "object") {
       nwObject.Clipboard = nwGuiModule.Clipboard;
     }
+    for (const key of ["Menu", "MenuItem", "Screen", "Shell", "Shortcut", "Tray"]) {
+      if (!nwObject[key]) nwObject[key] = nwGuiModule[key];
+    }
     nwGuiModule.App = nwObject.App;
     nwGuiModule.Window = nwObject.Window;
     nwGuiModule.Clipboard = nwObject.Clipboard;
@@ -313,9 +436,50 @@ export function createNwRuntime() {
 
   const nwModule = installNwCompatibility();
 
+  const electronAppShim = {
+    getName: () => "Local Web Game Player",
+    getVersion: () => "1.0.0",
+    getPath(name) {
+      const paths = {
+        appData: "/home/web-user",
+        desktop: "/home/web-user/Desktop",
+        documents: "/home/web-user/Documents",
+        exe: "/Game.exe",
+        home: "/home/web-user",
+        temp: "/tmp",
+        userData: nwAppShim.dataPath,
+      };
+      return paths[String(name)] || "/home/web-user";
+    },
+    quit: noop,
+  };
+  const ipcRendererShim = {
+    invoke: async () => undefined,
+    send: noop,
+    sendSync: () => undefined,
+    on: noopChain,
+    once: noopChain,
+    removeListener: noopChain,
+    removeAllListeners: noopChain,
+  };
+  const electronModule = {
+    app: electronAppShim,
+    clipboard: clipboardShim,
+    ipcRenderer: ipcRendererShim,
+    remote: {
+      app: electronAppShim,
+      clipboard: clipboardShim,
+      getCurrentWindow: () => windowShim,
+      shell: shellShim,
+    },
+    screen: screenShim,
+    shell: shellShim,
+  };
+
 
   return {
     clipboardShim,
+    electronModule,
     nwGuiModule,
     nwModule,
     windowShim,

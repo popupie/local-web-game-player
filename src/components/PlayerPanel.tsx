@@ -123,8 +123,7 @@ export function PlayerPanel({
                 <div className="home-control-cell">
                   <Icon name="trash" />
                   <span>
-                    Delete removes that library entry and its browser-stored
-                    data.
+                    Delete removes library entry and its browser-stored data.
                   </span>
                 </div>
                 <div className="home-control-cell">

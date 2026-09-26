@@ -22,9 +22,12 @@ export function createFsRuntime(options) {
   const VFS_FILE_PREFIX = "__mz_player_desktop_fs:file:";
   const VFS_DIR_PREFIX = "__mz_player_desktop_fs:dir:";
   const VFS_BINARY_PREFIX = "__mz_player_desktop_fs:base64:";
+  const VFS_META_PREFIX = "__mz_player_desktop_fs:meta:";
   const SAVE_CHANGED_EVENT = "MZ_PLAYER_LOCAL_SAVE_CHANGED";
   const manifestTextCache = new Map();
   const manifestBytesCache = new Map();
+  const openFiles = new Map();
+  let nextFileDescriptor = 100;
 
   function fileKey(path) {
     return VFS_FILE_PREFIX + normalizePath(path);
@@ -32,6 +35,10 @@ export function createFsRuntime(options) {
 
   function dirKey(path) {
     return VFS_DIR_PREFIX + normalizePath(path);
+  }
+
+  function metaKey(path) {
+    return VFS_META_PREFIX + normalizePath(path);
   }
 
   function vfsPathAliases(path) {
@@ -64,6 +71,29 @@ export function createFsRuntime(options) {
 
   function vfsDirKeys(path) {
     return vfsPathAliases(path).map(dirKey);
+  }
+
+  function vfsMetaKeys(path) {
+    return vfsPathAliases(path).map(metaKey);
+  }
+
+  function readVirtualMetadata(path) {
+    for (const key of vfsMetaKeys(path)) {
+      const value = window.localStorage.getItem(key);
+      if (!value) continue;
+      try { return JSON.parse(value); } catch { return null; }
+    }
+    return null;
+  }
+
+  function touchVirtualMetadata(path, isDirectory = false) {
+    const existing = readVirtualMetadata(path);
+    const now = Date.now();
+    window.localStorage.setItem(metaKey(path), JSON.stringify({
+      birthtimeMs: existing?.birthtimeMs ?? now,
+      isDirectory,
+      mtimeMs: now,
+    }));
   }
 
   function browserRpgSaveKeyForPath(path) {
@@ -161,13 +191,17 @@ export function createFsRuntime(options) {
     );
   }
 
-  function serializeVirtualFileData(data) {
+  function serializeVirtualFileData(data, options) {
     if (ArrayBuffer.isView(data)) {
       const bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
       return VFS_BINARY_PREFIX + bytesToBase64(bytes);
     }
     if (data instanceof ArrayBuffer) {
       return VFS_BINARY_PREFIX + bytesToBase64(new Uint8Array(data));
+    }
+    const encoding = normalizeReadEncoding(options);
+    if (encoding && encoding !== "utf8") {
+      return VFS_BINARY_PREFIX + bytesToBase64(BrowserBuffer.from(String(data ?? ""), encoding));
     }
     return String(data ?? "");
   }
@@ -179,6 +213,14 @@ export function createFsRuntime(options) {
     const encoding = normalizeReadEncoding(options);
     if (!encoding || encoding === "utf8") return value;
     return decodeFileBytes(new TextEncoder().encode(value), encoding);
+  }
+
+  function fileValueBytes(value) {
+    if (ArrayBuffer.isView(value)) {
+      return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    }
+    if (value instanceof ArrayBuffer) return new Uint8Array(value);
+    return new TextEncoder().encode(String(value ?? ""));
   }
 
   function virtualFileSize(value) {
@@ -210,12 +252,14 @@ export function createFsRuntime(options) {
     if (saveKey) {
       markParentDirs(path);
       window.localStorage.setItem(fileKey(path), value);
+      touchVirtualMetadata(path);
       window.localStorage.removeItem(saveKey);
       dispatchSaveChanged("write", path);
       return;
     }
     markParentDirs(path);
     window.localStorage.setItem(fileKey(path), value);
+    touchVirtualMetadata(path);
   }
 
   function removeRawVirtualFile(path) {
@@ -226,6 +270,7 @@ export function createFsRuntime(options) {
     for (const key of vfsFileKeys(path)) {
       window.localStorage.removeItem(key);
     }
+    for (const key of vfsMetaKeys(path)) window.localStorage.removeItem(key);
     dispatchSaveChanged("remove", path);
   }
 
@@ -259,6 +304,8 @@ export function createFsRuntime(options) {
     const encoding = String(value).toLowerCase().replace(/[-_]/g, "");
     if (encoding === "buffer") return null;
     if (encoding === "utf8") return "utf8";
+    if (encoding === "utf16le" || encoding === "ucs2") return "utf16le";
+    if (encoding === "ascii") return "ascii";
     if (encoding === "latin1" || encoding === "binary") return "latin1";
     if (encoding === "hex" || encoding === "base64") return encoding;
     throw new TypeError(
@@ -279,6 +326,9 @@ export function createFsRuntime(options) {
         );
       }
       return output;
+    }
+    if (encoding === "ascii" || encoding === "utf16le") {
+      return BrowserBuffer.from(bytes).toString(encoding);
     }
     if (encoding === "hex") return bytesToHex(bytes);
     if (encoding === "base64") return bytesToBase64(bytes);
@@ -384,8 +434,7 @@ export function createFsRuntime(options) {
   }
 
   function writeFileSync(path, data, options) {
-    void options;
-    writeRawVirtualFile(path, serializeVirtualFileData(data));
+    writeRawVirtualFile(path, serializeVirtualFileData(data, options));
   }
 
   function appendFileSync(path, data, options) {
@@ -409,10 +458,26 @@ export function createFsRuntime(options) {
     writeFileSync(path, String(previous ?? "") + String(data ?? ""), options);
   }
 
+  function truncateSync(path, length = 0) {
+    const size = Number(length);
+    if (!Number.isSafeInteger(size) || size < 0) {
+      throw new RangeError("length must be a non-negative integer.");
+    }
+    if (!existsSync(path)) throw fsError("ENOENT", "truncate", path);
+    const current = readFileSync(path);
+    const currentBytes = ArrayBuffer.isView(current)
+      ? new Uint8Array(current.buffer, current.byteOffset, current.byteLength)
+      : new TextEncoder().encode(String(current ?? ""));
+    const resized = new Uint8Array(size);
+    resized.set(currentBytes.subarray(0, Math.min(size, currentBytes.byteLength)));
+    writeFileSync(path, resized);
+  }
+
   function mkdirSync(path, options) {
     void options;
     const normalized = normalizePath(path);
     window.localStorage.setItem(dirKey(normalized), "1");
+    touchVirtualMetadata(normalized, true);
     markParentDirs(normalized);
   }
 
@@ -454,8 +519,10 @@ export function createFsRuntime(options) {
       return [
         fileStorageKey,
         dirStorageKey,
+        metaKey(alias),
         fileStorageKey + "/",
         dirStorageKey + "/",
+        metaKey(alias) + "/",
       ];
     });
     for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
@@ -472,12 +539,15 @@ export function createFsRuntime(options) {
 
   function copyFileSync(source, target) {
     const sourceEntry = readVirtualFileEntry(source);
-    if (!sourceEntry) {
-      if (lookupManifestFile(source)) throw fsError("EROFS", "copyfile", source, target);
+    if (!sourceEntry && !lookupManifestFile(source)) {
       throw fsError("ENOENT", "copyfile", source, target);
     }
     assertWritableVirtualPath(target, "copyfile", target);
-    writeRawVirtualFile(target, sourceEntry.value);
+    if (sourceEntry) {
+      writeRawVirtualFile(target, sourceEntry.value);
+    } else {
+      writeFileSync(target, readFileSync(source));
+    }
   }
 
   function renameSync(oldPath, newPath) {
@@ -504,7 +574,7 @@ export function createFsRuntime(options) {
     throw fsError("ENOSYS", "symlink", path, target);
   }
 
-  function readdirSync(path) {
+  function readdirSync(path, options) {
     const normalized = trimTrailingSlash(normalizePath(path));
     const vfsPrefixes = vfsPathAliases(normalized).flatMap((alias) => {
       const suffix = alias === "." || alias === "/" ? "" : trimTrailingSlash(alias) + "/";
@@ -542,7 +612,29 @@ export function createFsRuntime(options) {
         }
       }
     }
-    return Array.from(names);
+    const entries = Array.from(names);
+    if (options && typeof options === "object" && options.withFileTypes) {
+      return entries.map((name) => {
+        const childPath = normalizePath(normalized + "/" + name);
+        return {
+          name,
+          path: normalized,
+          parentPath: normalized,
+          isFile: () => existsSync(childPath) && !manifestDirExists(childPath) && !virtualDirExists(childPath),
+          isDirectory: () => manifestDirExists(childPath) || virtualDirExists(childPath),
+          isBlockDevice: () => false,
+          isCharacterDevice: () => false,
+          isSymbolicLink: () => false,
+          isFIFO: () => false,
+          isSocket: () => false,
+        };
+      });
+    }
+    const encoding = typeof options === "string" ? options : options?.encoding;
+    if (String(encoding ?? "").toLowerCase() === "buffer") {
+      return entries.map((name) => BrowserBuffer.from(name));
+    }
+    return entries;
   }
 
   function makeStats(path) {
@@ -556,18 +648,122 @@ export function createFsRuntime(options) {
       error.code = "ENOENT";
       throw error;
     }
+    const size = isFile
+      ? virtualFileSize(virtualFile)
+      : manifestFile?.size ?? 0;
+    const metadata = readVirtualMetadata(path);
+    const mtimeMs = metadata?.mtimeMs ?? 0;
+    const birthtimeMs = metadata?.birthtimeMs ?? mtimeMs;
+    const timestamp = new Date(mtimeMs);
+    const birthtime = new Date(birthtimeMs);
     return {
       isFile: () => isFile || Boolean(manifestFile),
       isDirectory: () => (isDirectory || isManifestDirectory) && !isFile && !manifestFile,
       isSymbolicLink: () => false,
-      size: isFile
-        ? virtualFileSize(virtualFile)
-        : manifestFile?.size ?? 0,
-      mtime: new Date(0),
-      ctime: new Date(0),
-      atime: new Date(0),
-      birthtime: new Date(0),
+      isBlockDevice: () => false,
+      isCharacterDevice: () => false,
+      isFIFO: () => false,
+      isSocket: () => false,
+      dev: 0,
+      ino: 0,
+      mode: isFile || manifestFile ? 0o100666 : 0o40777,
+      nlink: 1,
+      uid: 0,
+      gid: 0,
+      rdev: 0,
+      size,
+      blksize: 4096,
+      blocks: Math.ceil(size / 512),
+      atimeMs: mtimeMs,
+      mtimeMs,
+      ctimeMs: mtimeMs,
+      birthtimeMs,
+      mtime: timestamp,
+      ctime: timestamp,
+      atime: timestamp,
+      birthtime,
     };
+  }
+
+  function realpathSync(path) {
+    accessSync(path);
+    return normalizePath(path);
+  }
+
+  function openSync(path, flags = "r") {
+    const normalizedFlags = String(flags);
+    const exists = existsSync(path);
+    if (normalizedFlags.includes("x") && exists) throw fsError("EEXIST", "open", path);
+    if (!exists && !/[wa+]/u.test(normalizedFlags)) throw fsError("ENOENT", "open", path);
+    if (/[wa+]/u.test(normalizedFlags)) {
+      assertWritableVirtualPath(path, "open");
+      if (!exists || normalizedFlags.startsWith("w")) writeFileSync(path, enhancedBytes(new Uint8Array()));
+    }
+    const fd = nextFileDescriptor;
+    nextFileDescriptor += 1;
+    openFiles.set(fd, { flags: normalizedFlags, path: normalizePath(path), position: 0 });
+    return fd;
+  }
+
+  function fileForDescriptor(fd, syscall) {
+    const file = openFiles.get(Number(fd));
+    if (!file) throw fsError("EBADF", syscall);
+    return file;
+  }
+
+  function closeSync(fd) {
+    fileForDescriptor(fd, "close");
+    openFiles.delete(Number(fd));
+  }
+
+  function fstatSync(fd) {
+    return makeStats(fileForDescriptor(fd, "fstat").path);
+  }
+
+  function ftruncateSync(fd, length = 0) {
+    truncateSync(fileForDescriptor(fd, "ftruncate").path, length);
+  }
+
+  function readSync(fd, buffer, offset = 0, length = buffer?.byteLength ?? 0, position = null) {
+    const file = fileForDescriptor(fd, "read");
+    const sourceBytes = fileValueBytes(readFileSync(file.path));
+    const targetBytes = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    const start = position === null ? file.position : Number(position);
+    const count = Math.max(0, Math.min(Number(length), sourceBytes.byteLength - start, targetBytes.byteLength - offset));
+    targetBytes.set(sourceBytes.subarray(start, start + count), Number(offset));
+    if (position === null) file.position += count;
+    return count;
+  }
+
+  function writeSync(fd, data, offset, length, position) {
+    const file = fileForDescriptor(fd, "write");
+    const existingBytes = existsSync(file.path)
+      ? fileValueBytes(readFileSync(file.path))
+      : new Uint8Array();
+    const stringPosition = typeof data === "string" && typeof offset === "number" ? offset : null;
+    const stringEncoding = typeof length === "string"
+      ? length
+      : typeof offset === "string"
+        ? offset
+        : "utf8";
+    const source = typeof data === "string"
+      ? BrowserBuffer.from(data, stringEncoding)
+      : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    const sourceOffset = typeof data === "string" ? 0 : Number(offset ?? 0);
+    const sourceLength = typeof data === "string" ? source.byteLength : Number(length ?? source.byteLength - sourceOffset);
+    const start = file.flags.startsWith("a")
+      ? existingBytes.byteLength
+      : stringPosition !== null
+        ? stringPosition
+        : position === null || position === undefined
+          ? file.position
+          : Number(position);
+    const output = new Uint8Array(Math.max(existingBytes.byteLength, start + sourceLength));
+    output.set(existingBytes);
+    output.set(source.subarray(sourceOffset, sourceOffset + sourceLength), start);
+    writeFileSync(file.path, output);
+    if (position === null || position === undefined) file.position = start + sourceLength;
+    return sourceLength;
   }
 
   async function readManifestResponse(path) {
@@ -642,6 +838,12 @@ export function createFsRuntime(options) {
     }
   }
 
+  function nodeCallbackArgs(callback, args) {
+    const run = () => callback.apply(null, args);
+    if (typeof queueMicrotask === "function") queueMicrotask(run);
+    else Promise.resolve().then(run);
+  }
+
   function requireCallback(callback) {
     if (typeof callback !== "function") {
       throw new TypeError("callback must be a function.");
@@ -682,6 +884,14 @@ export function createFsRuntime(options) {
       (error) => nodeCallback(callback, error),
     );
     return undefined;
+  }
+
+  function appendFile(path, data, options, callback) {
+    if (typeof options === "function") {
+      callback = options;
+      options = undefined;
+    }
+    return withOptionalCallback(() => appendFileSync(path, data, options), callback);
   }
 
   function writeFile(path, data, options, callback) {
@@ -730,8 +940,7 @@ export function createFsRuntime(options) {
       callback = options;
       options = undefined;
     }
-    void options;
-    return withOptionalCallback(() => readdirSync(path), callback);
+    return withOptionalCallback(() => readdirSync(path, options), callback);
   }
 
   function stat(path, options, callback) {
@@ -761,9 +970,96 @@ export function createFsRuntime(options) {
     return withOptionalCallback(() => accessSync(path), callback);
   }
 
+  function exists(path, callback) {
+    requireCallback(callback);
+    const result = existsSync(path);
+    if (typeof queueMicrotask === "function") queueMicrotask(() => callback(result));
+    else Promise.resolve().then(() => callback(result));
+  }
+
+  function realpath(path, options, callback) {
+    if (typeof options === "function") {
+      callback = options;
+      options = undefined;
+    }
+    void options;
+    return withOptionalCallback(() => realpathSync(path), callback);
+  }
+
+  function truncate(path, length, callback) {
+    if (typeof length === "function") {
+      callback = length;
+      length = 0;
+    }
+    return withOptionalCallback(() => truncateSync(path, length), callback);
+  }
+
+  function open(path, flags, mode, callback) {
+    if (typeof mode === "function") {
+      callback = mode;
+      mode = undefined;
+    }
+    void mode;
+    return withOptionalCallback(() => openSync(path, flags), callback);
+  }
+
+  function close(fd, callback) {
+    return withOptionalCallback(() => closeSync(fd), callback);
+  }
+
+  function fstat(fd, options, callback) {
+    if (typeof options === "function") {
+      callback = options;
+      options = undefined;
+    }
+    void options;
+    return withOptionalCallback(() => fstatSync(fd), callback);
+  }
+
+  function ftruncate(fd, length, callback) {
+    if (typeof length === "function") {
+      callback = length;
+      length = 0;
+    }
+    return withOptionalCallback(() => ftruncateSync(fd, length), callback);
+  }
+
+  function read(fd, buffer, offset, length, position, callback) {
+    requireCallback(callback);
+    try {
+      const bytesRead = readSync(fd, buffer, offset, length, position);
+      nodeCallbackArgs(callback, [null, bytesRead, buffer]);
+    } catch (error) {
+      nodeCallback(callback, error);
+    }
+  }
+
+  function write(fd, data, offset, length, position, callback) {
+    if (typeof data === "string") {
+      if (typeof length === "function") {
+        callback = length;
+        length = undefined;
+      } else if (typeof position === "function") {
+        callback = position;
+        position = undefined;
+      }
+    }
+    requireCallback(callback);
+    try {
+      const bytesWritten = writeSync(fd, data, offset, length, position);
+      nodeCallbackArgs(callback, [null, bytesWritten, data]);
+    } catch (error) {
+      nodeCallback(callback, error);
+    }
+  }
+
+  realpath.native = realpath;
+  realpathSync.native = realpathSync;
+
   const fsPromises = {
     readFile: readFileCore,
     writeFile: (path, data, options) => promiseFromSync(() => writeFileSync(path, data, options)),
+    appendFile: (path, data, options) => promiseFromSync(() => appendFileSync(path, data, options)),
     rename: (oldPath, newPath) => promiseFromSync(() => renameSync(oldPath, newPath)),
     copyFile: (source, target, mode) => {
       void mode;
@@ -772,10 +1068,7 @@ export function createFsRuntime(options) {
     unlink: (path) => promiseFromSync(() => unlinkSync(path)),
     rm: (path, options) => promiseFromSync(() => rmSync(path, options)),
     mkdir: (path, options) => promiseFromSync(() => mkdirSync(path, options)),
-    readdir: (path, options) => {
-      void options;
-      return promiseFromSync(() => readdirSync(path));
-    },
+    readdir: (path, options) => promiseFromSync(() => readdirSync(path, options)),
     stat: (path, options) => {
       void options;
       return promiseFromSync(() => makeStats(path));
@@ -787,6 +1080,33 @@ export function createFsRuntime(options) {
     access: (path, mode) => {
       void mode;
       return promiseFromSync(() => accessSync(path));
+    },
+    realpath: (path, options) => {
+      void options;
+      return promiseFromSync(() => realpathSync(path));
+    },
+    truncate: (path, length) => promiseFromSync(() => truncateSync(path, length)),
+    open: (path, flags, mode) => {
+      void mode;
+      return promiseFromSync(() => {
+        const fd = openSync(path, flags);
+        return {
+          fd,
+          close: () => promiseFromSync(() => closeSync(fd)),
+          read: (buffer, offset, length, position) => promiseFromSync(() => ({
+            buffer,
+            bytesRead: readSync(fd, buffer, offset, length, position),
+          })),
+          readFile: (options) => promiseFromSync(() => readFileSync(fileForDescriptor(fd, "readFile").path, options)),
+          stat: () => promiseFromSync(() => fstatSync(fd)),
+          truncate: (length) => promiseFromSync(() => ftruncateSync(fd, length)),
+          write: (data, offset, length, position) => promiseFromSync(() => ({
+            buffer: data,
+            bytesWritten: writeSync(fd, data, offset, length, position),
+          })),
+          writeFile: (data, options) => promiseFromSync(() => writeFileSync(fileForDescriptor(fd, "writeFile").path, data, options)),
+        };
+      });
     },
   };
 
@@ -803,12 +1123,20 @@ export function createFsRuntime(options) {
   const fsModule = {
     constants: fsConstants,
     existsSync,
+    exists,
     access,
     accessSync,
     appendFileSync,
+    appendFile,
+    close,
+    closeSync,
     copyFile,
     copyFileSync,
     lstat,
+    fstat,
+    fstatSync,
+    ftruncate,
+    ftruncateSync,
     mkdirSync,
     mkdir,
     promises: fsPromises,
@@ -816,13 +1144,18 @@ export function createFsRuntime(options) {
     readFileText,
     readFileBytes,
     readFileSync,
+    read,
+    readSync,
     readlinkSync,
     readdir,
+    realpath,
+    realpathSync,
     rename,
     renameSync,
     rm,
     writeFileSync,
     writeFile,
+    write,
     unlinkSync,
     unlink,
     rmSync,
@@ -832,6 +1165,11 @@ export function createFsRuntime(options) {
     statSync: makeStats,
     lstatSync: makeStats,
     symlinkSync,
+    open,
+    openSync,
+    truncate,
+    truncateSync,
+    writeSync,
   };
 
 
