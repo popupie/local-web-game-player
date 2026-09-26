@@ -82,6 +82,15 @@ describe("path helpers", () => {
     expect(pathLookupAliases("www/img/pictures/title.rpgmvp")).toContain("www/img/pictures/title.jpg");
   });
 
+  it("falls back from a missing custom SystemWindow image to the default Window image", () => {
+    expect(rpgMakerAssetPathAliases("www/img/system/SystemWindow.rpgmvp")).toContain(
+      "www/img/system/Window.png",
+    );
+    expect(rpgMakerAssetPathAliases("img/system/systemWindow.png")).toContain(
+      "img/system/Window.rpgmvp",
+    );
+  });
+
   it("matches RPG Maker encrypted audio asset aliases", () => {
     expect(rpgMakerAssetPathAliases("www/audio/bgm/theme.ogg")).toEqual(
       expect.arrayContaining([

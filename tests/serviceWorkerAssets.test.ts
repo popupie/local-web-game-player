@@ -47,6 +47,9 @@ describe("service worker RPG Maker asset helpers", () => {
     expect(helpers.plainRequestEncryptedFallbackMime("www/img/pictures/logo.webp", "www/img/pictures/logo.rpgmvp")).toBe("image/webp");
     expect(helpers.imageMimeForBytes(jpegBytes)).toBe("image/jpeg");
     expect(helpers.imageMimeForBytes(webpBytes)).toBe("image/webp");
+    expect(helpers.rpgMakerAssetPathAliases("www/img/system/SystemWindow.rpgmvp")).toContain(
+      "www/img/system/Window.png",
+    );
   });
 
   it("detects plain/encrypted audio fallback directions", () => {

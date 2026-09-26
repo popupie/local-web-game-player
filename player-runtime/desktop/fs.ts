@@ -175,12 +175,6 @@ export function createFsRuntime(options) {
     return error;
   }
 
-  function assertWritableVirtualPath(path, syscall, dest) {
-    if (lookupManifestFile(path)) {
-      throw fsError("EROFS", syscall, path, dest);
-    }
-  }
-
   function isVirtualBinaryValue(value) {
     return String(value).startsWith(VFS_BINARY_PREFIX);
   }
@@ -247,7 +241,6 @@ export function createFsRuntime(options) {
   }
 
   function writeRawVirtualFile(path, value) {
-    assertWritableVirtualPath(path, "open");
     const saveKey = browserRpgSaveKeyForPath(path);
     if (saveKey) {
       markParentDirs(path);
@@ -542,7 +535,6 @@ export function createFsRuntime(options) {
     if (!sourceEntry && !lookupManifestFile(source)) {
       throw fsError("ENOENT", "copyfile", source, target);
     }
-    assertWritableVirtualPath(target, "copyfile", target);
     if (sourceEntry) {
       writeRawVirtualFile(target, sourceEntry.value);
     } else {
@@ -556,7 +548,6 @@ export function createFsRuntime(options) {
       if (lookupManifestFile(oldPath)) throw fsError("EROFS", "rename", oldPath, newPath);
       throw fsError("ENOENT", "rename", oldPath, newPath);
     }
-    assertWritableVirtualPath(newPath, "rename", newPath);
     writeRawVirtualFile(newPath, sourceEntry.value);
     removeRawVirtualFile(oldPath);
   }
@@ -696,7 +687,6 @@ export function createFsRuntime(options) {
     if (normalizedFlags.includes("x") && exists) throw fsError("EEXIST", "open", path);
     if (!exists && !/[wa+]/u.test(normalizedFlags)) throw fsError("ENOENT", "open", path);
     if (/[wa+]/u.test(normalizedFlags)) {
-      assertWritableVirtualPath(path, "open");
       if (!exists || normalizedFlags.startsWith("w")) writeFileSync(path, enhancedBytes(new Uint8Array()));
     }
     const fd = nextFileDescriptor;

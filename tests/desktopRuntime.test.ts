@@ -120,6 +120,8 @@ const manifestConfig = {
     { path: "www/js/app.js", url: "/play/game-1/www/js/app.js", size: 15, mimeType: "text/javascript", name: "app.js" },
     { path: "www/js/config.json", url: "/play/game-1/www/js/config.json", size: 13, mimeType: "application/json", name: "config.json" },
     { path: "www/data/default.txt", url: "/play/game-1/www/data/default.txt", size: 7, mimeType: "text/plain", name: "default.txt" },
+    { path: "www/_greenworks_debug.log", url: "/play/game-1/www/_greenworks_debug.log", size: 8, mimeType: "text/plain", name: "_greenworks_debug.log" },
+    { path: "www/greenworks.js", url: "/play/game-1/www/greenworks.js", size: 18, mimeType: "text/javascript", name: "greenworks.js" },
     { path: "www/node_modules/example-package/package.json", url: "/play/game-1/www/node_modules/example-package/package.json", size: 19, mimeType: "application/json", name: "package.json" },
     { path: "www/node_modules/example-package/lib/main.js", url: "/play/game-1/www/node_modules/example-package/lib/main.js", size: 29, mimeType: "text/javascript", name: "main.js" },
     { path: "Steam4C2.js", url: "/play/game-1/Steam4C2.js", size: 360, mimeType: "text/javascript", name: "Steam4C2.js" },
@@ -166,6 +168,7 @@ describe("desktop fs runtime", () => {
     installWindowShim({
       "/play/game-1/www/index.html": "<html></html>",
       "/play/game-1/www/data/default.txt": "default",
+      "/play/game-1/www/_greenworks_debug.log": "packaged",
     });
   });
 
@@ -197,6 +200,9 @@ describe("desktop fs runtime", () => {
     expect(fs.readFileSync("save/utf16.txt", "utf16le")).toBe("日本語");
     expect(fs.realpathSync("save/default.txt")).toBe("save/default.txt");
     expect(fs.statSync("save/default.txt").mtimeMs).toBeGreaterThan(0);
+    fs.writeFileSync("/www/_greenworks_debug.log", "");
+    fs.appendFileSync("/www/_greenworks_debug.log", "browser log");
+    expect(fs.readFileSync("/www/_greenworks_debug.log", "utf8")).toBe("browser log");
     expect(fs.readdirSync("save", { withFileTypes: true }).find((entry: any) => entry.name === "default.txt")?.isFile()).toBe(true);
 
     const fd = fs.openSync("save/descriptor.txt", "w+");
@@ -259,6 +265,7 @@ describe("desktop globals", () => {
       "/play/game-1/www/js/config.json": "{\"answer\":42}",
       "/play/game-1/www/node_modules/example-package/package.json": "{\"main\":\"lib/main\"}",
       "/play/game-1/www/node_modules/example-package/lib/main.js": "module.exports = { packageValue: 7 };",
+      "/play/game-1/www/greenworks.js": "<html>native addon placeholder</html>",
       "/play/game-1/Steam4C2.js": "<html>This response must not be compiled as JavaScript.</html>",
     });
     const browserWindow = (globalThis as RuntimeGlobal).window;
@@ -299,6 +306,8 @@ describe("desktop globals", () => {
     });
     expect(runtimeRequire?.("./Steam4C2-win64").initAPI()).toBe(false);
     expect(runtimeRequire?.("./Steam4C2").initAPI()).toBe(false);
+    expect(runtimeRequire?.("./greenworks").initAPI()).toBe(false);
+    expect(runtimeRequire?.("./lib/greenworks-win64.node").isSteamRunning()).toBe(false);
     expect(runtimeRequire?.("/www/js/app.js")).toEqual({ value: 42 });
     expect(runtimeRequire?.("example-package")).toEqual({ packageValue: 7 });
     expect(runtimeRequire?.resolve("example-package")).toBe("/www/node_modules/example-package/lib/main.js");

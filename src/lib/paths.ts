@@ -147,6 +147,23 @@ export function rpgMakerAssetPathAliases(path: string): string[] {
     }
   }
 
+  function addSystemWindowFallbacks(stem: string) {
+    const index = stem.lastIndexOf("/");
+    const directory = index < 0 ? "" : stem.slice(0, index);
+    const filename = index < 0 ? stem : stem.slice(index + 1);
+    const lowerDirectory = directory.toLowerCase();
+    if (
+      filename.toLowerCase() !== "systemwindow" ||
+      (lowerDirectory !== "img/system" && !lowerDirectory.endsWith("/img/system"))
+    ) {
+      return;
+    }
+    const fallbackStem = `${directory ? `${directory}/` : ""}Window`;
+    add(`${fallbackStem}.rpgmvp`);
+    for (const suffix of encryptedImageSuffixes) add(`${fallbackStem}${suffix}`);
+    for (const extension of plainImageExtensions) add(`${fallbackStem}${extension}`);
+  }
+
   for (const imageExtension of plainImageExtensions) {
     if (!lowerPath.endsWith(imageExtension)) continue;
     const stem = normalized.slice(0, -imageExtension.length);
@@ -154,12 +171,15 @@ export function rpgMakerAssetPathAliases(path: string): string[] {
     if (imageExtension === ".png") {
       for (const encryptedSuffix of encryptedImageSuffixes) add(`${stem}${encryptedSuffix}`);
     }
+    addSystemWindowFallbacks(stem);
     return aliases;
   }
 
   if (lowerPath.endsWith(".rpgmvp")) {
+    const stem = normalized.slice(0, -".rpgmvp".length);
     for (const encryptedSuffix of encryptedImageSuffixes) add(pathWithExtension(normalized, encryptedSuffix));
     for (const imageExtension of plainImageExtensions) add(pathWithExtension(normalized, imageExtension));
+    addSystemWindowFallbacks(stem);
     return aliases;
   }
 
@@ -169,6 +189,7 @@ export function rpgMakerAssetPathAliases(path: string): string[] {
     add(`${stem}.rpgmvp`);
     for (const candidateSuffix of encryptedImageSuffixes) add(`${stem}${candidateSuffix}`);
     for (const imageExtension of plainImageExtensions) add(`${stem}${imageExtension}`);
+    addSystemWindowFallbacks(stem);
     return aliases;
   }
 

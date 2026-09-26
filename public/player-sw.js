@@ -4,7 +4,7 @@ const GAME_STORE = "games";
 const FILE_STORE = "files";
 const BLOB_STORE = "blobs";
 const HANDLE_STORE = "handles";
-const PLAYER_DESKTOP_RUNTIME_VERSION = "desktop-api-7";
+const PLAYER_DESKTOP_RUNTIME_VERSION = "desktop-api-8";
 const PLAYER_BRIDGE_RUNTIME_VERSION = "bridge-api-5";
 const SESSION_FILE_TIMEOUT_MS = 10000;
 const EMPTY_SOURCE_MAP_TEXT = "{\"version\":3,\"sources\":[],\"mappings\":\"\"}";
@@ -274,6 +274,23 @@ function rpgMakerAssetPathAliases(path) {
     }
   }
 
+  function addSystemWindowFallbacks(stem) {
+    const index = stem.lastIndexOf("/");
+    const directory = index < 0 ? "" : stem.slice(0, index);
+    const filename = index < 0 ? stem : stem.slice(index + 1);
+    const lowerDirectory = directory.toLowerCase();
+    if (
+      filename.toLowerCase() !== "systemwindow" ||
+      (lowerDirectory !== "img/system" && !lowerDirectory.endsWith("/img/system"))
+    ) {
+      return;
+    }
+    const fallbackStem = (directory ? directory + "/" : "") + "Window";
+    add(fallbackStem + ".rpgmvp");
+    for (const suffix of ENCRYPTED_IMAGE_SUFFIXES) add(fallbackStem + suffix);
+    for (const extension of PLAIN_IMAGE_EXTENSIONS) add(fallbackStem + extension);
+  }
+
   for (const imageExtension of PLAIN_IMAGE_EXTENSIONS) {
     if (!lowerPath.endsWith(imageExtension)) continue;
     const stem = normalized.slice(0, -imageExtension.length);
@@ -281,16 +298,19 @@ function rpgMakerAssetPathAliases(path) {
     if (imageExtension === ".png") {
       for (const encryptedSuffix of ENCRYPTED_IMAGE_SUFFIXES) add(stem + encryptedSuffix);
     }
+    addSystemWindowFallbacks(stem);
     return aliases;
   }
 
   if (lowerPath.endsWith(".rpgmvp")) {
+    const stem = normalized.slice(0, -".rpgmvp".length);
     for (const encryptedSuffix of ENCRYPTED_IMAGE_SUFFIXES) {
       add(pathWithExtension(normalized, encryptedSuffix));
     }
     for (const imageExtension of PLAIN_IMAGE_EXTENSIONS) {
       add(pathWithExtension(normalized, imageExtension));
     }
+    addSystemWindowFallbacks(stem);
     return aliases;
   }
 
@@ -300,6 +320,7 @@ function rpgMakerAssetPathAliases(path) {
     add(stem + ".rpgmvp");
     for (const candidateSuffix of ENCRYPTED_IMAGE_SUFFIXES) add(stem + candidateSuffix);
     for (const imageExtension of PLAIN_IMAGE_EXTENSIONS) add(stem + imageExtension);
+    addSystemWindowFallbacks(stem);
     return aliases;
   }
 
