@@ -7,6 +7,7 @@ export function createPathRuntime(config) {
   function normalizePath(value) {
     const raw = String(value ?? "").replace(/\\+/g, "/");
     const hasLeadingSlash = raw.startsWith("/");
+    const hasTrailingSlash = raw.endsWith("/");
     const parts = [];
     for (const part of raw.split("/")) {
       if (!part || part === ".") continue;
@@ -21,7 +22,11 @@ export function createPathRuntime(config) {
       parts.push(part);
     }
     const normalized = parts.join("/");
-    return hasLeadingSlash ? "/" + normalized : normalized || ".";
+    let result = hasLeadingSlash ? "/" + normalized : normalized || ".";
+    if (hasTrailingSlash && result !== "/" && !result.endsWith("/")) {
+      result += "/";
+    }
+    return result;
   }
 
   function manifestKey(value) {
@@ -131,7 +136,8 @@ export function createPathRuntime(config) {
     for (let index = values.length - 1; index >= -1; index -= 1) {
       const value = index >= 0 ? String(values[index] ?? "") : "/www";
       if (!value) continue;
-      resolved = value.replace(/\\+/g, "/") + "/" + resolved;
+      const normalizedValue = value.replace(/\\+/g, "/");
+      resolved = resolved ? normalizedValue + "/" + resolved : normalizedValue;
       if (isAbsolute(value)) {
         absolute = true;
         break;

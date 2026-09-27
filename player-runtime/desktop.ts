@@ -79,23 +79,6 @@ import { createPathRuntime } from "./desktop/path";
       }
     }
 
-    function addSystemWindowFallbacks(stem) {
-      const index = stem.lastIndexOf("/");
-      const directory = index < 0 ? "" : stem.slice(0, index);
-      const filename = index < 0 ? stem : stem.slice(index + 1);
-      const lowerDirectory = directory.toLowerCase();
-      if (
-        filename.toLowerCase() !== "systemwindow" ||
-        (lowerDirectory !== "img/system" && !lowerDirectory.endsWith("/img/system"))
-      ) {
-        return;
-      }
-      const fallbackStem = (directory ? directory + "/" : "") + "Window";
-      add(fallbackStem + ".rpgmvp");
-      for (const suffix of encryptedImageSuffixes) add(fallbackStem + suffix);
-      for (const extension of plainImageExtensions) add(fallbackStem + extension);
-    }
-
     for (const imageExtension of plainImageExtensions) {
       if (!lowerPath.endsWith(imageExtension)) continue;
       const stem = path.slice(0, -imageExtension.length);
@@ -103,15 +86,12 @@ import { createPathRuntime } from "./desktop/path";
       if (imageExtension === ".png") {
         for (const encryptedSuffix of encryptedImageSuffixes) add(stem + encryptedSuffix);
       }
-      addSystemWindowFallbacks(stem);
       return candidates;
     }
 
     if (lowerPath.endsWith(".rpgmvp")) {
-      const stem = path.slice(0, -".rpgmvp".length);
       for (const encryptedSuffix of encryptedImageSuffixes) add(pathWithExtension(path, encryptedSuffix));
       for (const imageExtension of plainImageExtensions) add(pathWithExtension(path, imageExtension));
-      addSystemWindowFallbacks(stem);
       return candidates;
     }
 
@@ -121,7 +101,6 @@ import { createPathRuntime } from "./desktop/path";
       add(stem + ".rpgmvp");
       for (const candidateSuffix of encryptedImageSuffixes) add(stem + candidateSuffix);
       for (const imageExtension of plainImageExtensions) add(stem + imageExtension);
-      addSystemWindowFallbacks(stem);
       return candidates;
     }
 
@@ -790,26 +769,20 @@ import { createPathRuntime } from "./desktop/path";
     IsBPMode: () => false,
   };
   const greenworksNativeFallback = {
+    ...steamNativeFallback,
     FriendFlags: Object.freeze({ All: 65535, Immediate: 4 }),
     activateAchievement: () => false,
     activateGameOverlay: () => false,
     activateGameOverlayToWebPage: () => false,
     clearAchievement: () => false,
     getAchievement: () => false,
-    getCurrentGameLanguage: () => "english",
-    getCurrentUILanguage: () => "english",
     getDLCCount: () => 0,
     getFriendCount: () => 0,
-    getNumberOfAchievements: () => 0,
     getStatFloat: () => 0,
     getStatInt: () => 0,
     getSteamId: () => ({ screenName: "Player", steamId: "0" }),
-    initAPI: () => false,
     installDLC: () => false,
-    isCloudEnabled: () => false,
-    isCloudEnabledForUser: () => false,
     isDLCInstalled: () => false,
-    isGameOverlayEnabled: () => false,
     isSteamRunning: () => false,
     isSubscribedApp: () => false,
     setStat: () => false,
@@ -1048,24 +1021,26 @@ import { createPathRuntime } from "./desktop/path";
   modules["node:module"] = moduleModule;
   moduleModule.builtinModules.push("module");
 
-  function isSteamNativeModule(name) {
-    return /(?:^|\/)Steam4C2-(?:win|linux|osx)(?:32|64)$/iu.test(
-      String(name).replace(/\\+/g, "/").replace(/\.node$/iu, ""),
-    );
-  }
-
-  function isSteam4C2BridgeModule(name) {
-    return /(?:^|\/)Steam4C2$/iu.test(
-      String(name).replace(/\\+/g, "/").replace(/\.js$/iu, ""),
-    );
-  }
-
-  function isGreenworksNativeModule(name) {
+  function nativeModuleBasename(name) {
     const normalized = String(name)
       .replace(/\\+/g, "/")
       .replace(/\.(?:js|node)$/iu, "")
       .toLowerCase();
-    const basename = normalized.slice(normalized.lastIndexOf("/") + 1);
+    return normalized.slice(normalized.lastIndexOf("/") + 1);
+  }
+
+  function isSteamNativeModule(name) {
+    return /^steam4c2-(?:win|linux|osx)(?:32|64)$/u.test(
+      nativeModuleBasename(name),
+    );
+  }
+
+  function isSteam4C2BridgeModule(name) {
+    return nativeModuleBasename(name) === "steam4c2";
+  }
+
+  function isGreenworksModule(name) {
+    const basename = nativeModuleBasename(name);
     return (
       basename === "greenworks" ||
       /^greenworks-(?:win|linux|osx|mac)(?:32|64|x64|ia32|arm64)?$/u.test(basename)
@@ -1241,7 +1216,7 @@ import { createPathRuntime } from "./desktop/path";
 
   function mzPlayerRequire(name, parentFilename = "/www/index.html") {
     const key = String(name);
-    if (isGreenworksNativeModule(key)) {
+    if (isGreenworksModule(key)) {
       return greenworksNativeFallback;
     }
     if (isSteam4C2BridgeModule(key) || isSteamNativeModule(key)) {
