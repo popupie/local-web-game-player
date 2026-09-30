@@ -41,6 +41,7 @@ const mimeByExtension = new Map<string, string>([
   ["otf", "font/otf"],
   ["woff", "font/woff"],
   ["woff2", "font/woff2"],
+  ["wasm", "application/wasm"],
   ["rpgmvp", "image/png"],
   ["rpgmvm", "audio/mp4"],
   ["rpgmvo", "audio/ogg"],

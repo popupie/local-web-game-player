@@ -51,9 +51,9 @@ export function PlayerPanel({
           <section className="home-guide-intro" aria-labelledby="home-title">
             <h2 id="home-title">How to use this player</h2>
             <p>
-              Open a local RPG Maker MV/MZ, TyranoScript, or extracted Construct
-              2/NW.js export, then select it from the library. The folder or ZIP
-              needs a game <code>index.html</code>.
+              Open a local RPG Maker MV/MZ, TyranoScript, extracted Construct
+              2/NW.js, or Cocos Creator/Electron export, then select it from the
+              library. The folder or ZIP needs a game <code>index.html</code>.
             </p>
             <p>
               If the game files are packed inside an archive or executable, see

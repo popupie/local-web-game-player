@@ -218,6 +218,198 @@
   var FOCUS_RETURN_EVENT_TYPES = ["pointerup", "mouseup", "click", "touchend"];
   var TEXT_LOG_DELAY_MS = 140;
 
+  // player-runtime/bridge/cocos.ts
+  var COCOS_NAMED_ENTITIES = {
+    amp: "&",
+    apos: "'",
+    gt: ">",
+    lt: "<",
+    nbsp: "\xA0",
+    quot: '"'
+  };
+  var COCOS_EMOJI_FONT_FALLBACK = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+  function resolveCocosEngine(system) {
+    if (!system || typeof system.get !== "function") return null;
+    const candidates = [];
+    try {
+      if (typeof system.resolve === "function") candidates.push(system.resolve("cc"));
+    } catch {
+    }
+    candidates.push("cc");
+    for (const id of candidates) {
+      if (!id) continue;
+      try {
+        const engine = system.get(id);
+        if (isCocosEngine(engine)) return engine;
+      } catch {
+      }
+    }
+    try {
+      if (typeof system.entries === "function") {
+        for (const [, module] of system.entries()) {
+          if (isCocosEngine(module)) return module;
+        }
+      }
+    } catch {
+    }
+    return null;
+  }
+  function isCocosEngine(value) {
+    return Boolean(
+      value && value.director && typeof value.director.getScene === "function" && value.UITransform && (value.Label || value.RichText)
+    );
+  }
+  function plainCocosText(value) {
+    return String(value ?? "").replace(/<br\s*\/?>/giu, "\n").replace(/<img\b[^>]*>/giu, "").replace(/<[^>]+>/gu, "").replace(/&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/giu, (entity, decimal, hexadecimal, named) => {
+      if (decimal) return safeCodePoint(Number.parseInt(decimal, 10), entity);
+      if (hexadecimal) return safeCodePoint(Number.parseInt(hexadecimal, 16), entity);
+      return COCOS_NAMED_ENTITIES[String(named).toLowerCase()] ?? entity;
+    }).replace(/\u00a0/gu, " ").trim();
+  }
+  function safeCodePoint(value, fallback) {
+    if (!Number.isInteger(value) || value < 0 || value > 1114111) return fallback;
+    try {
+      return String.fromCodePoint(value);
+    } catch {
+      return fallback;
+    }
+  }
+  function cocosTextAlign(value) {
+    const alignment = Number(value);
+    if (alignment === 1) return "center";
+    if (alignment === 2) return "right";
+    return "left";
+  }
+  function cocosVerticalAlignFactor(value) {
+    const alignment = Number(value);
+    if (alignment === 1) return 0.5;
+    if (alignment === 2) return 1;
+    return 0;
+  }
+  function cocosFontFamily(source) {
+    const renderedFamily = source?.textStyle?.fontFamily || source?._textStyle?.fontFamily;
+    const usesSystemFont = source?.useSystemFont ?? source?._isSystemFontUsed;
+    const assetFamily = source?.font?._nativeAsset || source?._font?._nativeAsset;
+    const systemFamily = source?.fontFamily || source?._fontFamily;
+    const family = renderedFamily || (usesSystemFont === false ? assetFamily : systemFamily) || assetFamily || systemFamily || "Arial";
+    return String(family).trim() || "Arial";
+  }
+  function cocosCssFontFamily(source) {
+    const family = cocosFontFamily(source);
+    return `${family}, ${COCOS_EMOJI_FONT_FALLBACK}`;
+  }
+  function cocosFontMetrics(source, fallbackRenderScale = 1) {
+    const configuredFontSize = firstPositiveNumber(source?.fontSize, source?._fontSize) || 24;
+    const renderedFontSize = firstPositiveNumber(source?.actualFontSize, source?._actualFontSize);
+    const renderScale = firstPositiveNumber(
+      source?.textStyle?.fontScale,
+      source?._textStyle?.fontScale,
+      fallbackRenderScale
+    ) || 1;
+    const overflow = Number(source?.overflow ?? source?._overflow);
+    const fontSize = overflow === 2 && renderedFontSize ? renderedFontSize / renderScale : configuredFontSize;
+    const configuredLineHeight = firstPositiveNumber(source?.lineHeight, source?._lineHeight);
+    const lineHeight = configuredLineHeight ? configuredLineHeight * (fontSize / configuredFontSize) : fontSize;
+    return { fontSize, lineHeight };
+  }
+  function cocosRenderedText(source, fallbackText) {
+    const segments = source?._segments;
+    if (Array.isArray(segments) && segments.length > 0) {
+      const segmentLineCount = segments.reduce(
+        (count, segment) => Math.max(count, Number(segment?.lineCount) || 1),
+        1
+      );
+      const lineCount = Math.max(1, Number(source?._lineCount) || segmentLineCount);
+      const lines = Array.from({ length: lineCount }, () => "");
+      let hasText = false;
+      for (const segment of segments) {
+        const value = segment?.comp?.string ?? segment?.comp?._string;
+        if (value === void 0 || value === null) continue;
+        const index = Math.min(lineCount - 1, Math.max(0, (Number(segment?.lineCount) || 1) - 1));
+        lines[index] += String(value);
+        hasText = true;
+      }
+      if (hasText) return lines.join("\n");
+    }
+    const layoutData = source?.textLayoutData || source?._textLayoutData;
+    if (Array.isArray(layoutData?.parsedString) && layoutData.parsedString.length > 0) {
+      return layoutData.parsedString.map((line) => String(line ?? "")).join("\n");
+    }
+    return String(fallbackText ?? "");
+  }
+  function firstPositiveNumber(...values) {
+    for (const value of values) {
+      const number = Number(value);
+      if (Number.isFinite(number) && number > 0) return number;
+    }
+    return 0;
+  }
+  function cocosWorldToScreen(camera, Vec3, world) {
+    if (!camera || typeof camera.worldToScreen !== "function" || typeof Vec3 !== "function") {
+      return null;
+    }
+    return camera.worldToScreen(new Vec3(), world);
+  }
+  function cocosCssRectFromScreenPoints(points, canvasRect, canvasWidth, canvasHeight) {
+    if (!Array.isArray(points) || points.length < 2) return null;
+    if (!canvasRect || canvasRect.width <= 0 || canvasRect.height <= 0) return null;
+    const finitePoints = points.filter(
+      (point) => Number.isFinite(point?.x) && Number.isFinite(point?.y)
+    );
+    if (finitePoints.length !== points.length) return null;
+    const pixelWidth = Number(canvasWidth) || canvasRect.width;
+    const pixelHeight = Number(canvasHeight) || canvasRect.height;
+    const scaleX = canvasRect.width / pixelWidth;
+    const scaleY = canvasRect.height / pixelHeight;
+    const minX = Math.min(...finitePoints.map((point) => point.x));
+    const maxX = Math.max(...finitePoints.map((point) => point.x));
+    const minY = Math.min(...finitePoints.map((point) => point.y));
+    const maxY = Math.max(...finitePoints.map((point) => point.y));
+    return {
+      left: canvasRect.left + minX * scaleX,
+      top: canvasRect.top + (pixelHeight - maxY) * scaleY,
+      width: Math.max(1, (maxX - minX) * scaleX),
+      height: Math.max(1, (maxY - minY) * scaleY)
+    };
+  }
+  function cocosCssTransformFromScreenPoints(points, canvasRect, canvasWidth, canvasHeight, localWidth, localHeight) {
+    if (!Array.isArray(points) || points.length !== 4) return null;
+    if (!canvasRect || canvasRect.width <= 0 || canvasRect.height <= 0) return null;
+    const width = Number(localWidth);
+    const height = Number(localHeight);
+    if (!(width > 0) || !(height > 0)) return null;
+    const pixelWidth = Number(canvasWidth) || canvasRect.width;
+    const pixelHeight = Number(canvasHeight) || canvasRect.height;
+    const scaleX = canvasRect.width / pixelWidth;
+    const scaleY = canvasRect.height / pixelHeight;
+    const cssPoints = points.map((point) => ({
+      x: canvasRect.left + Number(point?.x) * scaleX,
+      y: canvasRect.top + (pixelHeight - Number(point?.y)) * scaleY
+    }));
+    if (cssPoints.some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y))) {
+      return null;
+    }
+    const [bottomLeft, , topRight, topLeft] = cssPoints;
+    return {
+      left: topLeft.x,
+      top: topLeft.y,
+      width,
+      height,
+      matrix: {
+        a: (topRight.x - topLeft.x) / width,
+        b: (topRight.y - topLeft.y) / width,
+        c: (bottomLeft.x - topLeft.x) / height,
+        d: (bottomLeft.y - topLeft.y) / height
+      },
+      bounds: {
+        left: Math.min(...cssPoints.map((point) => point.x)),
+        top: Math.min(...cssPoints.map((point) => point.y)),
+        right: Math.max(...cssPoints.map((point) => point.x)),
+        bottom: Math.max(...cssPoints.map((point) => point.y))
+      }
+    };
+  }
+
   // player-runtime/bridge/overlay.ts
   var OWNER_ID = "__mzPlayerTextOverlayOwnerId";
   function createTextOverlayBridge({ config, postParentMessage, settings }) {
@@ -244,6 +436,10 @@
       tyranoScanFrame: 0,
       construct2HooksInstalled: false,
       construct2ScanFrame: 0,
+      cocosEngine: null,
+      cocosHooksInstalled: false,
+      cocosScanFrame: 0,
+      cocosLastScanAt: 0,
       nextDomSourceId: 1,
       canvasTextCaptureDepth: 0,
       measureContext: null,
@@ -315,6 +511,11 @@
           white-space: pre;
           transform-origin: 0 0;
           user-select: text;
+        }
+
+        .mz-player-text-overlay-entry-cocos {
+          white-space: pre-wrap;
+          overflow: hidden;
         }
 
         #mz-player-text-overlay.mz-player-text-overlay-readable .mz-player-text-overlay-entry {
@@ -647,6 +848,178 @@
         overlayState.construct2ScanFrame = requestAnimationFrame(scan);
       };
       overlayState.construct2ScanFrame = requestAnimationFrame(scan);
+    }
+    function installCocosOverlayHooks() {
+      if (overlayState.cocosHooksInstalled) return;
+      const install = () => {
+        if (overlayState.cocosHooksInstalled) return true;
+        ensureOverlayDom();
+        const engine = resolveCocosEngine(window.System);
+        if (!engine) return false;
+        overlayState.cocosEngine = engine;
+        overlayState.cocosHooksInstalled = true;
+        if (document.fonts) {
+          document.fonts.ready.then(scheduleFlush);
+          document.fonts.addEventListener?.("loadingdone", scheduleFlush);
+        }
+        const scan = (now) => {
+          overlayState.cocosScanFrame = 0;
+          if (now - overlayState.cocosLastScanAt >= 50) {
+            overlayState.cocosLastScanAt = now;
+            scanCocosText();
+          }
+          overlayState.cocosScanFrame = requestAnimationFrame(scan);
+        };
+        overlayState.cocosScanFrame = requestAnimationFrame(scan);
+        return true;
+      };
+      if (install()) return;
+      setTimeout(installCocosOverlayHooks, 250);
+    }
+    function scanCocosText() {
+      if (!overlayIsActive()) return;
+      const engine = overlayState.cocosEngine;
+      const scene = engine?.director?.getScene?.();
+      const canvas = cocosCanvas(engine);
+      if (!scene || !(canvas instanceof HTMLCanvasElement)) return;
+      const seen = /* @__PURE__ */ new Set();
+      const visit = (node, insideRichText = false) => {
+        if (!node || node.activeInHierarchy === false || node.active === false) return;
+        const components = Array.isArray(node._components) ? node._components : [];
+        const richText = components.find((component) => cocosComponentIs(component, engine.RichText));
+        if (richText && cocosSourceIsVisible(richText)) {
+          captureCocosSource(engine, richText, canvas, true, seen);
+        }
+        if (!insideRichText && !richText) {
+          for (const component of components) {
+            if (cocosComponentIs(component, engine.Label) && cocosSourceIsVisible(component)) {
+              captureCocosSource(engine, component, canvas, false, seen);
+            }
+          }
+        }
+        for (const child of node.children || []) visit(child, insideRichText || Boolean(richText));
+      };
+      visit(scene);
+      for (const [key, entry] of overlayState.entries) {
+        if (entry.cocosSource && !seen.has(key)) removeEntry(key, entry);
+      }
+      scheduleFlush();
+    }
+    function cocosComponentIs(component, Component) {
+      if (!component || typeof Component !== "function") return false;
+      try {
+        return component instanceof Component;
+      } catch {
+        return false;
+      }
+    }
+    function captureCocosSource(engine, source, canvas, richText, seen) {
+      const rawText = source.string ?? source._string;
+      const text = richText ? plainCocosText(rawText) : String(rawText ?? "").replace(/\u00a0/gu, " ").trim();
+      if (!text) return;
+      const displayText = cocosRenderedText(source, text);
+      const rect = cocosPageRect(engine, source, canvas, displayText);
+      if (!rect) return;
+      const key = `cocos:${domSourceId(source)}`;
+      seen.add(key);
+      upsertEntry(key, {
+        cocosSource: source,
+        cocosRect: rect,
+        text,
+        displayText,
+        width: rect.width,
+        height: rect.height,
+        fontSize: rect.fontSize,
+        fontFace: cocosCssFontFamily(source),
+        fontStyle: source.isItalic || source._isItalic ? "italic" : "normal",
+        fontWeight: source.isBold || source._isBold ? "700" : "400",
+        textDecoration: source.isUnderline || source._isUnderline ? "underline" : "none",
+        lineHeight: rect.lineHeight,
+        paddingTop: rect.paddingTop,
+        textAlign: cocosTextAlign(source.horizontalAlign ?? source._horizontalAlign),
+        updatedAt: performance.now()
+      });
+    }
+    function cocosCanvas(engine) {
+      return engine?.game?.canvas || document.querySelector("#GameCanvas, canvas");
+    }
+    function cocosSourceIsVisible(source) {
+      const node = source?.node;
+      if (!node || node.isValid === false || node.activeInHierarchy === false) return false;
+      if (source.enabled === false || source.enabledInHierarchy === false) return false;
+      const colorAlpha = Number(source.color?.a ?? source._color?.a ?? 255);
+      if (colorAlpha <= 0) return false;
+      let current = node;
+      let guard = 0;
+      while (current && guard++ < 100) {
+        if (current.active === false || current.activeInHierarchy === false) return false;
+        current = current.parent;
+      }
+      return true;
+    }
+    function cocosPageRect(engine, source, canvas, text) {
+      const node = source.node;
+      const transform = node?.getComponent?.(engine.UITransform);
+      const camera = engine?.director?.root?.batcher2D?.getFirstRenderCamera?.(node);
+      const Vec3 = engine?.Vec3;
+      if (!transform || !camera || typeof Vec3 !== "function") return null;
+      const contentSize = transform.contentSize || transform._contentSize;
+      const anchor = transform.anchorPoint || transform._anchorPoint;
+      const width = Number(contentSize?.width);
+      const height = Number(contentSize?.height);
+      const anchorX = Number(anchor?.x);
+      const anchorY = Number(anchor?.y);
+      if (!(width > 0) || !(height > 0)) return null;
+      const localPoints = [
+        [-width * (Number.isFinite(anchorX) ? anchorX : 0.5), -height * (Number.isFinite(anchorY) ? anchorY : 0.5)],
+        [width * (1 - (Number.isFinite(anchorX) ? anchorX : 0.5)), -height * (Number.isFinite(anchorY) ? anchorY : 0.5)],
+        [width * (1 - (Number.isFinite(anchorX) ? anchorX : 0.5)), height * (1 - (Number.isFinite(anchorY) ? anchorY : 0.5))],
+        [-width * (Number.isFinite(anchorX) ? anchorX : 0.5), height * (1 - (Number.isFinite(anchorY) ? anchorY : 0.5))]
+      ];
+      const screenPoints = [];
+      try {
+        for (const [x, y] of localPoints) {
+          const world = transform.convertToWorldSpaceAR(new Vec3(x, y, 0), new Vec3());
+          const screen = cocosWorldToScreen(camera, Vec3, world);
+          if (!screen) return null;
+          screenPoints.push({ x: Number(screen.x), y: Number(screen.y) });
+        }
+      } catch {
+        return null;
+      }
+      const canvasRect = canvas.getBoundingClientRect();
+      const rect = cocosCssRectFromScreenPoints(screenPoints, canvasRect, canvas.width, canvas.height);
+      const geometry = cocosCssTransformFromScreenPoints(
+        screenPoints,
+        canvasRect,
+        canvas.width,
+        canvas.height,
+        width,
+        height
+      );
+      if (!rect || !geometry || geometry.bounds.left >= canvasRect.right || geometry.bounds.top >= canvasRect.bottom || geometry.bounds.right <= canvasRect.left || geometry.bounds.bottom <= canvasRect.top) {
+        return null;
+      }
+      const { fontSize, lineHeight } = cocosFontMetrics(
+        source,
+        engine?.view?.getScaleX?.() || 1
+      );
+      const lineCount = Math.max(1, String(text).split("\n").length);
+      const textHeight = Math.min(height, lineHeight * lineCount);
+      const verticalFactor = cocosVerticalAlignFactor(source.verticalAlign ?? source._verticalAlign);
+      return {
+        left: roundCocosCssNumber(geometry.left),
+        top: roundCocosCssNumber(geometry.top),
+        width: roundCocosCssNumber(geometry.width),
+        height: roundCocosCssNumber(geometry.height),
+        fontSize: roundCocosCssNumber(fontSize),
+        lineHeight: roundCocosCssNumber(lineHeight),
+        paddingTop: roundCocosCssNumber(Math.max(0, height - textHeight) * verticalFactor),
+        transform: `matrix(${roundCocosCssNumber(geometry.matrix.a)}, ${roundCocosCssNumber(geometry.matrix.b)}, ${roundCocosCssNumber(geometry.matrix.c)}, ${roundCocosCssNumber(geometry.matrix.d)}, 0, 0)`
+      };
+    }
+    function roundCocosCssNumber(value) {
+      return Math.round(value * 1e3) / 1e3;
     }
     function scanConstruct2Text() {
       if (!overlayIsActive()) return;
@@ -1050,6 +1423,7 @@
       overlayState.lineGroups.clear();
       for (const timer of overlayState.textLogTimers.values()) window.clearTimeout(timer);
       overlayState.textLogTimers.clear();
+      overlayState.textLogValues.clear();
       overlayState.raf = 0;
     }
     function captureBitmapText(bitmap, rawText, x, y, maxWidth, lineHeight, align) {
@@ -1261,7 +1635,7 @@
       overlayState.textLogTimers.set(key, timer);
     }
     function entryIsLoggable(entry) {
-      if (entry?.domSource || entry?.constructSource) return true;
+      if (entry?.domSource || entry?.constructSource || entry?.cocosSource) return true;
       const name = entry?.owner?.constructor?.name || "";
       return /^(Window_Message|Window_ChoiceList|Window_NameBox|Window_ScrollText)$/.test(name);
     }
@@ -1287,13 +1661,14 @@
         }
         if (!entry.element) {
           entry.element = document.createElement(entry.domSource ? "div" : "span");
-          entry.element.className = entry.domSource ? "mz-player-text-overlay-entry mz-player-text-overlay-entry-dom" : entry.constructSource ? "mz-player-text-overlay-entry mz-player-text-overlay-entry-construct2" : "mz-player-text-overlay-entry";
+          entry.element.className = entry.domSource ? "mz-player-text-overlay-entry mz-player-text-overlay-entry-dom" : entry.constructSource ? "mz-player-text-overlay-entry mz-player-text-overlay-entry-construct2" : entry.cocosSource ? "mz-player-text-overlay-entry mz-player-text-overlay-entry-cocos" : "mz-player-text-overlay-entry";
           overlayState.root.appendChild(entry.element);
         }
         if (entry.constructSource) {
           layoutConstruct2Entry(entry, rect);
-        } else if (entry.element.textContent !== entry.text) {
-          entry.element.textContent = entry.text;
+        } else {
+          const displayText = entry.cocosSource ? entry.displayText || entry.text : entry.text;
+          if (entry.element.textContent !== displayText) entry.element.textContent = displayText;
         }
         entry.element.setAttribute("aria-label", entry.text);
         entry.element.dataset.rpgText = entry.text;
@@ -1304,6 +1679,8 @@
         setStyleIfChanged(entry.element, "width", `${Math.max(1, rect.width)}px`);
         setStyleIfChanged(entry.element, "height", `${Math.max(1, rect.height)}px`);
         setStyleIfChanged(entry.element, "textAlign", entry.textAlign || "left");
+        setStyleIfChanged(entry.element, "transformOrigin", entry.cocosSource ? "0 0" : "");
+        setStyleIfChanged(entry.element, "transform", entry.cocosSource ? rect.transform || "none" : "");
         if (entry.domSource) {
           const scaleX = entry.visualScaleX || 1;
           const scaleY = entry.visualScaleY || 1;
@@ -1336,6 +1713,17 @@
         } else if (entry.constructSource) {
           setStyleIfChanged(entry.element, "font", "");
           setStyleIfChanged(entry.element, "lineHeight", "");
+        } else if (entry.cocosSource) {
+          setStyleIfChanged(entry.element, "whiteSpace", "pre");
+          setStyleIfChanged(entry.element, "fontFamily", entry.fontFace || "sans-serif");
+          setStyleIfChanged(entry.element, "fontSize", `${Math.max(1, rect.fontSize)}px`);
+          setStyleIfChanged(entry.element, "fontStyle", entry.fontStyle || "normal");
+          setStyleIfChanged(entry.element, "fontWeight", entry.fontWeight || "400");
+          setStyleIfChanged(entry.element, "fontKerning", "auto");
+          setStyleIfChanged(entry.element, "fontVariantLigatures", "normal");
+          setStyleIfChanged(entry.element, "textDecorationLine", entry.textDecoration || "none");
+          setStyleIfChanged(entry.element, "lineHeight", `${Math.max(1, entry.lineHeight || rect.fontSize * 1.2)}px`);
+          setStyleIfChanged(entry.element, "paddingTop", `${Math.max(0, entry.paddingTop || 0)}px`);
         } else {
           setStyleIfChanged(entry.element, "font", `${Math.max(1, rect.fontSize)}px ${entry.fontFace || "sans-serif"}`);
           setStyleIfChanged(entry.element, "lineHeight", `${Math.max(1, rect.height)}px`);
@@ -1415,6 +1803,7 @@
     function entryIsVisible(entry) {
       if (entry.domSource) return domSourceIsVisible(entry.domSource);
       if (entry.constructSource) return construct2SourceIsVisible(entry.constructSource);
+      if (entry.cocosSource) return cocosSourceIsVisible(entry.cocosSource);
       const owner = entry.owner;
       if (!owner || owner.destroyed || !owner.parent) return false;
       if (!ownerBelongsToActiveScene(owner)) return false;
@@ -1440,6 +1829,7 @@
     }
     function toPageRect(entry) {
       if (entry.constructSource) return entry.constructRect || null;
+      if (entry.cocosSource) return entry.cocosRect || null;
       if (entry.domSource) {
         const rect2 = entry.domSource.getBoundingClientRect();
         if (rect2.width <= 0 || rect2.height <= 0) return null;
@@ -1575,6 +1965,7 @@
       focusGameTarget,
       installDictionaryGuardInputHooks,
       installConstruct2OverlayHooks,
+      installCocosOverlayHooks,
       installRpgMakerOverlayHooks,
       installTyranoOverlayHooks,
       refreshOverlayClasses,
@@ -1991,6 +2382,7 @@
     overlay.installRpgMakerOverlayHooks();
     overlay.installTyranoOverlayHooks();
     overlay.installConstruct2OverlayHooks();
+    overlay.installCocosOverlayHooks();
     overlay.installDictionaryGuardInputHooks();
     overlay.refreshOverlayClasses();
     parent.postStatus();

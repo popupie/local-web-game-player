@@ -1,9 +1,10 @@
 # Local Web Game Player
 
 Local Web Game Player runs compatible local HTML game exports directly in your
-browser. It supports RPG Maker MV/MZ, TyranoScript, and Construct 2
-NW.js games. You can open a local game folder or import a ZIP, then play
-without uploading game files to a server.
+browser. It supports RPG Maker MV/MZ, TyranoScript, Construct 2 NW.js, and
+Cocos Creator games. You can open a local
+game folder or import a ZIP, then play without uploading game files to a
+server.
 
 ## Demo
 
@@ -11,9 +12,9 @@ https://github.com/user-attachments/assets/56beacfb-855d-4bdf-87a2-8c388e0cc9b1
 
 ## Use Case
 
-Many RPG Maker, TyranoScript, and Construct 2 games are distributed as desktop
-applications. This app is useful when playing web exports on Linux or macOS
-through a browser.
+Many RPG Maker, TyranoScript, Construct 2, and Cocos Creator games are
+distributed as desktop applications. This app is useful when playing web
+exports on Linux or macOS through a browser.
 
 It can also help with language study. The text overlay makes game text easier to
 select with browser tools such as the Yomitan extension. Yomitan is a separate
@@ -84,6 +85,18 @@ GameFolder/
   data.js
   images/
   media/
+```
+
+Cocos Creator web exports commonly use this layout, sometimes nested in an
+Electron application's `resources` directory:
+
+```text
+GameFolder/
+  index.html
+  application.js
+  cocos-js/
+  src/
+  assets/
 ```
 
 Desktop wrapper files such as Electron's `main.js`, `package.json`, and

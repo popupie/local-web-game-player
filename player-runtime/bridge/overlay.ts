@@ -1,6 +1,18 @@
 // @ts-nocheck
 
 import { FOCUS_RETURN_EVENT_TYPES, TEXT_LOG_DELAY_MS } from "./constants";
+import {
+  cocosCssRectFromScreenPoints,
+  cocosCssFontFamily,
+  cocosCssTransformFromScreenPoints,
+  cocosFontMetrics,
+  cocosRenderedText,
+  cocosTextAlign,
+  cocosVerticalAlignFactor,
+  cocosWorldToScreen,
+  plainCocosText,
+  resolveCocosEngine,
+} from "./cocos";
 import { exactModifierMatch } from "./keyEvents";
 
 const OWNER_ID = "__mzPlayerTextOverlayOwnerId";
@@ -29,6 +41,10 @@ export function createTextOverlayBridge({ config, postParentMessage, settings })
     tyranoScanFrame: 0,
     construct2HooksInstalled: false,
     construct2ScanFrame: 0,
+    cocosEngine: null,
+    cocosHooksInstalled: false,
+    cocosScanFrame: 0,
+    cocosLastScanAt: 0,
     nextDomSourceId: 1,
     canvasTextCaptureDepth: 0,
     measureContext: null,
@@ -101,6 +117,11 @@ export function createTextOverlayBridge({ config, postParentMessage, settings })
           white-space: pre;
           transform-origin: 0 0;
           user-select: text;
+        }
+
+        .mz-player-text-overlay-entry-cocos {
+          white-space: pre-wrap;
+          overflow: hidden;
         }
 
         #mz-player-text-overlay.mz-player-text-overlay-readable .mz-player-text-overlay-entry {
@@ -491,6 +512,213 @@ export function createTextOverlayBridge({ config, postParentMessage, settings })
     };
 
     overlayState.construct2ScanFrame = requestAnimationFrame(scan);
+  }
+
+  function installCocosOverlayHooks() {
+    if (overlayState.cocosHooksInstalled) return;
+
+    const install = () => {
+      if (overlayState.cocosHooksInstalled) return true;
+      ensureOverlayDom();
+      const engine = resolveCocosEngine(window.System);
+      if (!engine) return false;
+
+      overlayState.cocosEngine = engine;
+      overlayState.cocosHooksInstalled = true;
+      if (document.fonts) {
+        document.fonts.ready.then(scheduleFlush);
+        document.fonts.addEventListener?.("loadingdone", scheduleFlush);
+      }
+      const scan = (now) => {
+        overlayState.cocosScanFrame = 0;
+        if (now - overlayState.cocosLastScanAt >= 50) {
+          overlayState.cocosLastScanAt = now;
+          scanCocosText();
+        }
+        overlayState.cocosScanFrame = requestAnimationFrame(scan);
+      };
+      overlayState.cocosScanFrame = requestAnimationFrame(scan);
+      return true;
+    };
+
+    if (install()) return;
+    setTimeout(installCocosOverlayHooks, 250);
+  }
+
+  function scanCocosText() {
+    if (!overlayIsActive()) return;
+    const engine = overlayState.cocosEngine;
+    const scene = engine?.director?.getScene?.();
+    const canvas = cocosCanvas(engine);
+    if (!scene || !(canvas instanceof HTMLCanvasElement)) return;
+
+    const seen = new Set();
+    const visit = (node, insideRichText = false) => {
+      if (!node || node.activeInHierarchy === false || node.active === false) return;
+      const components = Array.isArray(node._components) ? node._components : [];
+      const richText = components.find((component) => cocosComponentIs(component, engine.RichText));
+
+      if (richText && cocosSourceIsVisible(richText)) {
+        captureCocosSource(engine, richText, canvas, true, seen);
+      }
+
+      if (!insideRichText && !richText) {
+        for (const component of components) {
+          if (cocosComponentIs(component, engine.Label) && cocosSourceIsVisible(component)) {
+            captureCocosSource(engine, component, canvas, false, seen);
+          }
+        }
+      }
+
+      for (const child of node.children || []) visit(child, insideRichText || Boolean(richText));
+    };
+
+    visit(scene);
+    for (const [key, entry] of overlayState.entries) {
+      if (entry.cocosSource && !seen.has(key)) removeEntry(key, entry);
+    }
+    scheduleFlush();
+  }
+
+  function cocosComponentIs(component, Component) {
+    if (!component || typeof Component !== "function") return false;
+    try {
+      return component instanceof Component;
+    } catch {
+      return false;
+    }
+  }
+
+  function captureCocosSource(engine, source, canvas, richText, seen) {
+    const rawText = source.string ?? source._string;
+    const text = richText ? plainCocosText(rawText) : String(rawText ?? "").replace(/\u00a0/gu, " ").trim();
+    if (!text) return;
+    const displayText = cocosRenderedText(source, text);
+
+    const rect = cocosPageRect(engine, source, canvas, displayText);
+    if (!rect) return;
+
+    const key = `cocos:${domSourceId(source)}`;
+    seen.add(key);
+    upsertEntry(key, {
+      cocosSource: source,
+      cocosRect: rect,
+      text,
+      displayText,
+      width: rect.width,
+      height: rect.height,
+      fontSize: rect.fontSize,
+      fontFace: cocosCssFontFamily(source),
+      fontStyle: source.isItalic || source._isItalic ? "italic" : "normal",
+      fontWeight: source.isBold || source._isBold ? "700" : "400",
+      textDecoration: source.isUnderline || source._isUnderline ? "underline" : "none",
+      lineHeight: rect.lineHeight,
+      paddingTop: rect.paddingTop,
+      textAlign: cocosTextAlign(source.horizontalAlign ?? source._horizontalAlign),
+      updatedAt: performance.now(),
+    });
+  }
+
+  function cocosCanvas(engine) {
+    return engine?.game?.canvas || document.querySelector("#GameCanvas, canvas");
+  }
+
+  function cocosSourceIsVisible(source) {
+    const node = source?.node;
+    if (!node || node.isValid === false || node.activeInHierarchy === false) return false;
+    if (source.enabled === false || source.enabledInHierarchy === false) return false;
+    const colorAlpha = Number(source.color?.a ?? source._color?.a ?? 255);
+    if (colorAlpha <= 0) return false;
+
+    let current = node;
+    let guard = 0;
+    while (current && guard++ < 100) {
+      if (current.active === false || current.activeInHierarchy === false) return false;
+      current = current.parent;
+    }
+    return true;
+  }
+
+  function cocosPageRect(engine, source, canvas, text) {
+    const node = source.node;
+    const transform = node?.getComponent?.(engine.UITransform);
+    const camera = engine?.director?.root?.batcher2D?.getFirstRenderCamera?.(node);
+    const Vec3 = engine?.Vec3;
+    if (!transform || !camera || typeof Vec3 !== "function") return null;
+
+    const contentSize = transform.contentSize || transform._contentSize;
+    const anchor = transform.anchorPoint || transform._anchorPoint;
+    const width = Number(contentSize?.width);
+    const height = Number(contentSize?.height);
+    const anchorX = Number(anchor?.x);
+    const anchorY = Number(anchor?.y);
+    if (!(width > 0) || !(height > 0)) return null;
+
+    const localPoints = [
+      [-width * (Number.isFinite(anchorX) ? anchorX : 0.5), -height * (Number.isFinite(anchorY) ? anchorY : 0.5)],
+      [width * (1 - (Number.isFinite(anchorX) ? anchorX : 0.5)), -height * (Number.isFinite(anchorY) ? anchorY : 0.5)],
+      [width * (1 - (Number.isFinite(anchorX) ? anchorX : 0.5)), height * (1 - (Number.isFinite(anchorY) ? anchorY : 0.5))],
+      [-width * (Number.isFinite(anchorX) ? anchorX : 0.5), height * (1 - (Number.isFinite(anchorY) ? anchorY : 0.5))],
+    ];
+
+    const screenPoints = [];
+    try {
+      for (const [x, y] of localPoints) {
+        const world = transform.convertToWorldSpaceAR(new Vec3(x, y, 0), new Vec3());
+        // Batcher2D returns the low-level render camera, whose signature is
+        // worldToScreen(out, world), rather than the Camera component's
+        // worldToScreen(world, out) wrapper.
+        const screen = cocosWorldToScreen(camera, Vec3, world);
+        if (!screen) return null;
+        screenPoints.push({ x: Number(screen.x), y: Number(screen.y) });
+      }
+    } catch {
+      return null;
+    }
+
+    const canvasRect = canvas.getBoundingClientRect();
+    const rect = cocosCssRectFromScreenPoints(screenPoints, canvasRect, canvas.width, canvas.height);
+    const geometry = cocosCssTransformFromScreenPoints(
+      screenPoints,
+      canvasRect,
+      canvas.width,
+      canvas.height,
+      width,
+      height,
+    );
+    if (
+      !rect ||
+      !geometry ||
+      geometry.bounds.left >= canvasRect.right ||
+      geometry.bounds.top >= canvasRect.bottom ||
+      geometry.bounds.right <= canvasRect.left ||
+      geometry.bounds.bottom <= canvasRect.top
+    ) {
+      return null;
+    }
+
+    const { fontSize, lineHeight } = cocosFontMetrics(
+      source,
+      engine?.view?.getScaleX?.() || 1,
+    );
+    const lineCount = Math.max(1, String(text).split("\n").length);
+    const textHeight = Math.min(height, lineHeight * lineCount);
+    const verticalFactor = cocosVerticalAlignFactor(source.verticalAlign ?? source._verticalAlign);
+
+    return {
+      left: roundCocosCssNumber(geometry.left),
+      top: roundCocosCssNumber(geometry.top),
+      width: roundCocosCssNumber(geometry.width),
+      height: roundCocosCssNumber(geometry.height),
+      fontSize: roundCocosCssNumber(fontSize),
+      lineHeight: roundCocosCssNumber(lineHeight),
+      paddingTop: roundCocosCssNumber(Math.max(0, height - textHeight) * verticalFactor),
+      transform: `matrix(${roundCocosCssNumber(geometry.matrix.a)}, ${roundCocosCssNumber(geometry.matrix.b)}, ${roundCocosCssNumber(geometry.matrix.c)}, ${roundCocosCssNumber(geometry.matrix.d)}, 0, 0)`,
+    };
+  }
+
+  function roundCocosCssNumber(value) {
+    return Math.round(value * 1000) / 1000;
   }
 
   function scanConstruct2Text() {
@@ -958,6 +1186,7 @@ export function createTextOverlayBridge({ config, postParentMessage, settings })
     overlayState.lineGroups.clear();
     for (const timer of overlayState.textLogTimers.values()) window.clearTimeout(timer);
     overlayState.textLogTimers.clear();
+    overlayState.textLogValues.clear();
     overlayState.raf = 0;
   }
 
@@ -1201,7 +1430,7 @@ export function createTextOverlayBridge({ config, postParentMessage, settings })
   }
 
   function entryIsLoggable(entry) {
-    if (entry?.domSource || entry?.constructSource) return true;
+    if (entry?.domSource || entry?.constructSource || entry?.cocosSource) return true;
     const name = entry?.owner?.constructor?.name || "";
     return /^(Window_Message|Window_ChoiceList|Window_NameBox|Window_ScrollText)$/.test(name);
   }
@@ -1236,14 +1465,17 @@ export function createTextOverlayBridge({ config, postParentMessage, settings })
           ? "mz-player-text-overlay-entry mz-player-text-overlay-entry-dom"
           : entry.constructSource
             ? "mz-player-text-overlay-entry mz-player-text-overlay-entry-construct2"
-            : "mz-player-text-overlay-entry";
+            : entry.cocosSource
+              ? "mz-player-text-overlay-entry mz-player-text-overlay-entry-cocos"
+              : "mz-player-text-overlay-entry";
         overlayState.root.appendChild(entry.element);
       }
 
       if (entry.constructSource) {
         layoutConstruct2Entry(entry, rect);
-      } else if (entry.element.textContent !== entry.text) {
-        entry.element.textContent = entry.text;
+      } else {
+        const displayText = entry.cocosSource ? entry.displayText || entry.text : entry.text;
+        if (entry.element.textContent !== displayText) entry.element.textContent = displayText;
       }
       entry.element.setAttribute("aria-label", entry.text);
       entry.element.dataset.rpgText = entry.text;
@@ -1255,6 +1487,8 @@ export function createTextOverlayBridge({ config, postParentMessage, settings })
       setStyleIfChanged(entry.element, "width", `${Math.max(1, rect.width)}px`);
       setStyleIfChanged(entry.element, "height", `${Math.max(1, rect.height)}px`);
       setStyleIfChanged(entry.element, "textAlign", entry.textAlign || "left");
+      setStyleIfChanged(entry.element, "transformOrigin", entry.cocosSource ? "0 0" : "");
+      setStyleIfChanged(entry.element, "transform", entry.cocosSource ? rect.transform || "none" : "");
       if (entry.domSource) {
         const scaleX = entry.visualScaleX || 1;
         const scaleY = entry.visualScaleY || 1;
@@ -1287,6 +1521,17 @@ export function createTextOverlayBridge({ config, postParentMessage, settings })
       } else if (entry.constructSource) {
         setStyleIfChanged(entry.element, "font", "");
         setStyleIfChanged(entry.element, "lineHeight", "");
+      } else if (entry.cocosSource) {
+        setStyleIfChanged(entry.element, "whiteSpace", "pre");
+        setStyleIfChanged(entry.element, "fontFamily", entry.fontFace || "sans-serif");
+        setStyleIfChanged(entry.element, "fontSize", `${Math.max(1, rect.fontSize)}px`);
+        setStyleIfChanged(entry.element, "fontStyle", entry.fontStyle || "normal");
+        setStyleIfChanged(entry.element, "fontWeight", entry.fontWeight || "400");
+        setStyleIfChanged(entry.element, "fontKerning", "auto");
+        setStyleIfChanged(entry.element, "fontVariantLigatures", "normal");
+        setStyleIfChanged(entry.element, "textDecorationLine", entry.textDecoration || "none");
+        setStyleIfChanged(entry.element, "lineHeight", `${Math.max(1, entry.lineHeight || rect.fontSize * 1.2)}px`);
+        setStyleIfChanged(entry.element, "paddingTop", `${Math.max(0, entry.paddingTop || 0)}px`);
       } else {
         setStyleIfChanged(entry.element, "font", `${Math.max(1, rect.fontSize)}px ${entry.fontFace || "sans-serif"}`);
         setStyleIfChanged(entry.element, "lineHeight", `${Math.max(1, rect.height)}px`);
@@ -1383,6 +1628,7 @@ export function createTextOverlayBridge({ config, postParentMessage, settings })
   function entryIsVisible(entry) {
     if (entry.domSource) return domSourceIsVisible(entry.domSource);
     if (entry.constructSource) return construct2SourceIsVisible(entry.constructSource);
+    if (entry.cocosSource) return cocosSourceIsVisible(entry.cocosSource);
     const owner = entry.owner;
     if (!owner || owner.destroyed || !owner.parent) return false;
     if (!ownerBelongsToActiveScene(owner)) return false;
@@ -1412,6 +1658,7 @@ export function createTextOverlayBridge({ config, postParentMessage, settings })
 
   function toPageRect(entry) {
     if (entry.constructSource) return entry.constructRect || null;
+    if (entry.cocosSource) return entry.cocosRect || null;
     if (entry.domSource) {
       const rect = entry.domSource.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return null;
@@ -1564,6 +1811,7 @@ export function createTextOverlayBridge({ config, postParentMessage, settings })
     focusGameTarget,
     installDictionaryGuardInputHooks,
     installConstruct2OverlayHooks,
+    installCocosOverlayHooks,
     installRpgMakerOverlayHooks,
     installTyranoOverlayHooks,
     refreshOverlayClasses,
