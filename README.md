@@ -192,12 +192,6 @@ Build the app:
 pnpm run build
 ```
 
-Run tests:
-
-```sh
-pnpm run test
-```
-
 Preview the production build:
 
 ```sh
