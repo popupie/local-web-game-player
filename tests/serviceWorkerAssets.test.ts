@@ -219,16 +219,21 @@ describe("service worker WOLF RPG compatibility helpers", () => {
       { path: "woditor.wasm", size: 1, mime: "application/wasm" },
       { path: "Data.wolf", size: 1, mime: "application/octet-stream" },
     ];
-    const html = helpers.injectBridge("<html><head></head><body></body></html>", game, files);
+    const source = '<html><head></head><body><script async src="woditor.js"></script></body></html>';
+    const html = helpers.injectBridge(source, game, files);
 
     expect(html).not.toContain("/runtime-bridge.js");
     expect(html).not.toContain("/mz-player-runtime/desktop.js");
     expect(html).not.toContain("__MZ_PLAYER_DESKTOP_CONFIG");
+    expect(html).toContain("__WOLF_PLAYER_CONFIG__");
+    expect(html).toContain('"mode":"packed"');
+    expect(html).toContain("/mz-player-runtime/wolf.js");
+    expect(html).toContain('<script async src="woditor.js"></script>');
   });
 
   it("bridges loose WOLF assets with Blob URLs before Browser Woditor starts", () => {
     const helpers = loadServiceWorkerHelpers();
-    const game = { id: "wolf-loose-1", settings: {} };
+    const game = { id: "wolf-loose-1", settings: { overlayEnabled: true } };
     const files = [
       { path: "index.html", size: 1, mime: "text/html" },
       { path: "woditor.js", size: 1, mime: "text/javascript" },
@@ -247,11 +252,23 @@ describe("service worker WOLF RPG compatibility helpers", () => {
 
     expect(helpers.isLooseWolfRpgGame(files)).toBe(true);
     expect(html).toContain("__WOLF_PLAYER_CONFIG__");
+    expect(html).toContain('"mode":"loose"');
     expect(html).toContain('"woditorSrc":"woditor.js"');
+    expect(html).toContain('"settings":{"overlayEnabled":true}');
     expect(html).toContain('searchParams.set("Game_ID","wolf-loose-1")');
     expect(html).toContain("/mz-player-runtime/wolf.js");
     expect(html).not.toContain('src="lib/lazy_assets.js"');
     expect(html).not.toContain('<script async src="woditor.js"></script>');
     expect(html).not.toContain("/runtime-bridge.js");
+  });
+
+  it("enables the WOLF main text clipboard bridge in Game.ini", () => {
+    const helpers = loadServiceWorkerHelpers();
+    const source = "WindowModeFlag=1\r\nClipBoard_Use=0\r\n";
+    const result = helpers.adaptWolfGameIni(source);
+
+    expect(result).toContain("ClipBoard_Use=1\r\n");
+    expect(result).toContain("MainText_to_ClipBoard=1\r\n");
+    expect(result.match(/ClipBoard_Use=/g)).toHaveLength(1);
   });
 });

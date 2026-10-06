@@ -106,7 +106,7 @@ export function PlayerPanel({
                 </div>
                 <div className="home-control-cell">
                   <Icon name="layers" />
-                  <span>Overlay captures RPG Maker canvas text and TyranoScript HTML dialogue for selection and the text log.</span>
+                  <span>Overlay captures RPG Maker canvas text, WOLF RPG dialogue, and TyranoScript HTML dialogue for selection and the text log.</span>
                 </div>
 
                 <div className="home-control-cell">

@@ -1,9 +1,9 @@
 # Local Web Game Player
 
 Local Web Game Player runs compatible local HTML game exports directly in your
-browser. It supports RPG Maker MV/MZ and TyranoScript games. You can open a
-local game folder or import a ZIP, then play without uploading game files to a
-server.
+browser. It supports RPG Maker MV and MZ, WOLF RPG, and TyranoScript games. You
+can open a local game folder or import a ZIP, then play without uploading game
+files to a server.
 
 ## Demo
 
@@ -11,8 +11,9 @@ https://github.com/user-attachments/assets/56beacfb-855d-4bdf-87a2-8c388e0cc9b1
 
 ## Use Case
 
-Many RPG Maker and TyranoScript games are distributed as desktop applications.
-This app is useful when playing web exports on Linux or macOS through a browser.
+Many RPG Maker, WOLF RPG, and TyranoScript games are distributed as desktop
+applications. This app is useful when playing web exports on Linux or macOS
+through a browser.
 
 It can also help with language study. The text overlay makes game text easier to
 select with browser tools such as the Yomitan extension. Yomitan is a separate
@@ -73,6 +74,10 @@ GameFolder/
   tyrano/
   data/
 ```
+
+WOLF RPG games need a web export produced by Wolf Tools. Open the exported
+folder that contains `index.html`, `asset_manifest.json`, and the extracted game
+assets. The player loads those assets individually as the game requests them.
 
 Desktop wrapper files such as Electron's `main.js`, `package.json`, and
 `node_modules` are not needed for browser playback. The player automatically
@@ -172,6 +177,6 @@ older folder picker.
 
 ## Notes
 
-This is an unofficial player for user-provided web game exports. It is not
-affiliated with or endorsed by Gotcha Gotcha Games, KADOKAWA, Degica, or the
-TyranoScript project.
+This is an unofficial player for user provided web game exports. It is not
+affiliated with or endorsed by Gotcha Gotcha Games, KADOKAWA, Degica, SmokingWOLF,
+or the TyranoScript project.

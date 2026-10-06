@@ -6,7 +6,7 @@ const BLOB_STORE = "blobs";
 const HANDLE_STORE = "handles";
 const PLAYER_DESKTOP_RUNTIME_VERSION = "desktop-api-1";
 const PLAYER_BRIDGE_RUNTIME_VERSION = "bridge-api-2";
-const PLAYER_WOLF_RUNTIME_VERSION = "wolf-assets-3";
+const PLAYER_WOLF_RUNTIME_VERSION = "wolf-compat-1";
 const SESSION_FILE_TIMEOUT_MS = 10000;
 const EMPTY_SOURCE_MAP_TEXT = "{\"version\":3,\"sources\":[],\"mappings\":\"\"}";
 const RPG_MAKER_ENCRYPTED_HEADER_BYTES = Uint8Array.from([
@@ -846,6 +846,29 @@ function isLooseWolfRpgGame(files) {
   return hasManifest && hasLazyLoader;
 }
 
+function isWolfGameIniPath(path) {
+  const normalized = normalizePath(path).toLowerCase();
+  return normalized === "game.ini" || normalized.endsWith("/game.ini");
+}
+
+function adaptWolfGameIni(text) {
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  let result = text;
+  for (const [key, value] of [
+    ["ClipBoard_Use", "1"],
+    ["MainText_to_ClipBoard", "1"],
+  ]) {
+    const pattern = new RegExp(`^(\\s*${key}\\s*=).*$`, "im");
+    if (pattern.test(result)) {
+      result = result.replace(pattern, `$1${value}`);
+    } else {
+      if (result && !result.endsWith("\n")) result += eol;
+      result += `${key}=${value}${eol}`;
+    }
+  }
+  return result;
+}
+
 function adaptTyranoConfig(text) {
   return text.replace(
     /^(\s*;\s*configSave\s*=\s*)file(\s*(?:\/\/.*)?)$/gim,
@@ -984,6 +1007,15 @@ async function serveGameFile(url, request) {
     }
   }
 
+  if (isWolfGameIniPath(record.path)) {
+    const files = await getGameFiles(gameId);
+    if (isWolfRpgGame(files)) {
+      const config = adaptWolfGameIni(await responseBlob.text());
+      headers.set("Content-Type", "text/plain; charset=utf-8");
+      return new Response(config, { status: 200, headers });
+    }
+  }
+
   if ((record.mime || "").startsWith("text/html")) {
     const html = await responseBlob.text();
     const files = await getGameFiles(gameId);
@@ -1027,7 +1059,7 @@ function desktopRuntimeConfig(game, files) {
   };
 }
 
-function adaptLooseWolfHtml(html, game) {
+function adaptWolfHtml(html, game, looseAssets) {
   const lazyLoaderPattern = /<script\b[^>]*\bsrc=["'][^"']*lib\/lazy_assets\.js(?:\?[^"']*)?["'][^>]*><\/script>/gi;
   const woditorPattern = /<script\b[^>]*\bsrc=["']([^"']*woditor\.js(?:\?[^"']*)?)["'][^>]*><\/script>/i;
   const match = woditorPattern.exec(html);
@@ -1035,14 +1067,20 @@ function adaptLooseWolfHtml(html, game) {
 
   const config = jsonForScript({
     gameId: game.id,
-    woditorSrc: match[1],
+    mode: looseAssets ? "loose" : "packed",
+    ...(looseAssets ? { woditorSrc: match[1] } : {}),
+    settings: game.settings,
   });
   const gameId = jsonForScript(game.id);
   const bootstrap = [
     `<script>(()=>{const url=new URL(location.href);url.searchParams.set("Game_ID",${gameId});history.replaceState(null,"",url);window.__WOLF_PLAYER_CONFIG__=${config};})();</script>`,
     `<script src="/mz-player-runtime/wolf.js?v=${PLAYER_WOLF_RUNTIME_VERSION}"></script>`,
   ].join("");
-  return html.replace(lazyLoaderPattern, "").replace(woditorPattern, bootstrap);
+  const preparedHtml = looseAssets ? html.replace(lazyLoaderPattern, "") : html;
+  return preparedHtml.replace(
+    woditorPattern,
+    looseAssets ? bootstrap : `${bootstrap}${match[0]}`,
+  );
 }
 
 function injectBridge(html, game, files) {
@@ -1052,8 +1090,8 @@ function injectBridge(html, game, files) {
   })};</script>`;
   const isTyrano = isTyranoGame(files);
   const isWolfRpg = isWolfRpgGame(files);
-  const preparedHtml = isLooseWolfRpgGame(files)
-    ? adaptLooseWolfHtml(html, game)
+  const preparedHtml = isWolfRpg
+    ? adaptWolfHtml(html, game, isLooseWolfRpgGame(files))
     : html;
   const desktopScripts = isTyrano || isWolfRpg ? "" : [
     `<script>window.__MZ_PLAYER_DESKTOP_CONFIG=${jsonForScript(
