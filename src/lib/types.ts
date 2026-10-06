@@ -66,6 +66,7 @@ export interface ImportProgress {
 
 export type PlayerToParentMessage =
   | { type: "reserved-key"; action: ReservedKeyAction; code: string }
+  | { type: "overlay-availability"; gameId: string; available: boolean }
   | { type: "overlay-status"; overlayEnabled: boolean; readerMode: boolean }
   | { type: "game-viewport"; width: number; height: number }
   | { type: "return-focus" }

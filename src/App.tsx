@@ -16,6 +16,10 @@ const unsavedProgressWarning = "Leave the current game? Unsaved progress in the 
 
 export default function App() {
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const [overlayAvailability, setOverlayAvailability] = useState<{
+    gameId: string;
+    available: boolean;
+  } | null>(null);
   const [recordingGuardTrigger, setRecordingGuardTrigger] = useState(false);
   const directoryInputRef = useRef<HTMLInputElement>(null);
   const zipInputRef = useRef<HTMLInputElement>(null);
@@ -34,6 +38,11 @@ export default function App() {
     textLogs,
   } = useTextLog(textLogLimit);
   const activeDictionaryGuard = library.activeGame ? dictionaryGuardFor(library.activeGame) : defaultDictionaryDismissGuard;
+  const overlayAvailable = Boolean(
+    library.activeGame
+    && overlayAvailability?.gameId === library.activeGame.id
+    && overlayAvailability.available,
+  );
   const quotaPercent = library.storage?.quota && library.storage.usage ? Math.min(100, Math.round((library.storage.usage / library.storage.quota) * 100)) : 0;
   function wolfAssetsForActiveGame(): Promise<WolfAssetObjectUrlSet> {
     const game = library.activeGame;
@@ -85,6 +94,9 @@ export default function App() {
       if (message.type === "wolf-assets-request") {
         void respondWithWolfAssets(event, message);
         return;
+      }
+      if (message.type === "overlay-availability") {
+        setOverlayAvailability({ gameId: message.gameId, available: message.available });
       }
       if (message.type === "reserved-key") {
         void handleReservedAction(message.action);
@@ -156,6 +168,7 @@ export default function App() {
 
   async function handleReservedAction(action: string) {
     if (!library.activeGame) return;
+    if (!overlayAvailable && (action === "toggleOverlay" || action === "toggleReader")) return;
     if (action === "toggleOverlay") {
       await setGameSettings(library.activeGame, overlayTogglePatch(library.activeGame));
       player.scheduleFocusPlayer();
@@ -263,6 +276,7 @@ export default function App() {
         frameWrapRef={player.frameWrapRef}
         gameAspectRatio={player.gameAspectRatio}
         logsOpen={logsOpen}
+        overlayAvailable={overlayAvailable}
         onIframeLoad={handleIframeLoad}
         onRequestFullscreen={() => void handleReservedAction("fullscreen")}
         onToggleOverlay={(game) => void setGameSettingsAndFocus(game, overlayTogglePatch(game))}

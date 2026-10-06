@@ -6,7 +6,7 @@ const BLOB_STORE = "blobs";
 const HANDLE_STORE = "handles";
 const PLAYER_DESKTOP_RUNTIME_VERSION = "desktop-api-1";
 const PLAYER_BRIDGE_RUNTIME_VERSION = "bridge-api-2";
-const PLAYER_WOLF_RUNTIME_VERSION = "wolf-compat-1";
+const PLAYER_WOLF_RUNTIME_VERSION = "wolf-compat-11";
 const SESSION_FILE_TIMEOUT_MS = 10000;
 const EMPTY_SOURCE_MAP_TEXT = "{\"version\":3,\"sources\":[],\"mappings\":\"\"}";
 const RPG_MAKER_ENCRYPTED_HEADER_BYTES = Uint8Array.from([
@@ -846,29 +846,6 @@ function isLooseWolfRpgGame(files) {
   return hasManifest && hasLazyLoader;
 }
 
-function isWolfGameIniPath(path) {
-  const normalized = normalizePath(path).toLowerCase();
-  return normalized === "game.ini" || normalized.endsWith("/game.ini");
-}
-
-function adaptWolfGameIni(text) {
-  const eol = text.includes("\r\n") ? "\r\n" : "\n";
-  let result = text;
-  for (const [key, value] of [
-    ["ClipBoard_Use", "1"],
-    ["MainText_to_ClipBoard", "1"],
-  ]) {
-    const pattern = new RegExp(`^(\\s*${key}\\s*=).*$`, "im");
-    if (pattern.test(result)) {
-      result = result.replace(pattern, `$1${value}`);
-    } else {
-      if (result && !result.endsWith("\n")) result += eol;
-      result += `${key}=${value}${eol}`;
-    }
-  }
-  return result;
-}
-
 function adaptTyranoConfig(text) {
   return text.replace(
     /^(\s*;\s*configSave\s*=\s*)file(\s*(?:\/\/.*)?)$/gim,
@@ -1002,15 +979,6 @@ async function serveGameFile(url, request) {
     const files = await getGameFiles(gameId);
     if (isTyranoGame(files)) {
       const config = adaptTyranoConfig(await responseBlob.text());
-      headers.set("Content-Type", "text/plain; charset=utf-8");
-      return new Response(config, { status: 200, headers });
-    }
-  }
-
-  if (isWolfGameIniPath(record.path)) {
-    const files = await getGameFiles(gameId);
-    if (isWolfRpgGame(files)) {
-      const config = adaptWolfGameIni(await responseBlob.text());
       headers.set("Content-Type", "text/plain; charset=utf-8");
       return new Response(config, { status: 200, headers });
     }

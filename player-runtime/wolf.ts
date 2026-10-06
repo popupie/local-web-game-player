@@ -20,15 +20,12 @@ type WolfAssetResponse = {
 
 type WolfRuntimeModule = {
   preRun: Array<(runtimeModule?: WolfRuntimeModule) => void>;
-  HEAP8?: Int8Array;
   canvas?: HTMLCanvasElement;
-  catchGameMessage?: (message: string) => void;
 };
 
 import { normalizeWolfPath, wolfPathKeys } from "./wolfPaths";
-import { installWolfOverlay } from "./wolfOverlay";
-import type { WolfPlayerSettings } from "./wolfOverlay";
-import { adaptWolfGameIniBytes } from "./wolfText";
+import { installWolfCompatibility } from "./wolfCompatibility";
+import type { WolfPlayerSettings } from "./wolfCompatibility";
 
 declare const Module: WolfRuntimeModule;
 declare const FS: {
@@ -116,7 +113,7 @@ function installAssetLoader(assets: WolfAsset[]) {
     }
   }
 
-  function load(path: unknown, force = false): boolean {
+  function load(path: unknown): boolean {
     const requested = normalizeWolfPath(path);
     const asset = wolfPathKeys(requested)
       .map((key) => available.get(key))
@@ -139,7 +136,7 @@ function installAssetLoader(assets: WolfAsset[]) {
     }
 
     const absolute = `/${requested}`;
-    if (!force && FS.analyzePath(absolute).exists) return true;
+    if (FS.analyzePath(absolute).exists) return true;
 
     const request = new XMLHttpRequest();
     request.open("GET", asset.url, false);
@@ -167,7 +164,6 @@ function installAssetLoader(assets: WolfAsset[]) {
     const originalOpen = FS.open;
     const originalStat = FS.stat;
     const originalLstat = FS.lstat;
-    const originalWriteFile = FS.writeFile;
 
     FS.open = function(path, flags) {
       const readOnly = typeof flags === "string"
@@ -184,20 +180,6 @@ function installAssetLoader(assets: WolfAsset[]) {
       load(path);
       return originalLstat.apply(FS, arguments as unknown as []);
     };
-    FS.writeFile = function(path, data) {
-      const requested = normalizeWolfPath(path);
-      const bytes = data instanceof Uint8Array ? data : undefined;
-      const lowerRequested = requested.toLowerCase();
-      if (bytes && (lowerRequested === "game.ini" || lowerRequested.endsWith("/game.ini"))) {
-        return originalWriteFile.call(FS, path, adaptWolfGameIniBytes(bytes), arguments[2]);
-      }
-      return originalWriteFile.apply(FS, arguments as unknown as []);
-    };
-    const gameIni = assets.find((asset) => {
-      const path = normalizeWolfPath(asset.path).toLowerCase();
-      return path === "game.ini" || path.endsWith("/game.ini");
-    });
-    if (gameIni) load(gameIni.path, true);
   });
 }
 
@@ -218,36 +200,15 @@ async function start() {
   }
   // Recent Browser Woditor builds remove the global Module reference after
   // startup. Keep the initialized object supplied to preRun so packed games
-  // retain access to HEAP8 and the canvas just like loose-asset games do.
+  // retain access to the canvas just like loose-asset games do.
   runtimeModule.preRun.push((initializedModule) => {
     activeModule = initializedModule ?? runtimeModule;
   });
-  const overlay = installWolfOverlay({
+  installWolfCompatibility({
     gameId: config.gameId,
     initialSettings: config.settings,
-    getHeap: () => activeModule?.HEAP8 ?? runtimeModule.HEAP8,
     getCanvas: () => activeModule?.canvas ?? runtimeModule.canvas ?? document.querySelector<HTMLCanvasElement>("#canvas, canvas"),
   });
-  const originalCatchGameMessage = runtimeModule.catchGameMessage?.bind(runtimeModule);
-  runtimeModule.catchGameMessage = (message) => {
-    originalCatchGameMessage?.(message);
-    overlay.captureText(message);
-  };
-  const originalGetContext = HTMLCanvasElement.prototype.getContext;
-  HTMLCanvasElement.prototype.getContext = function(
-    this: HTMLCanvasElement,
-    contextId: string,
-    attributes?: unknown,
-  ) {
-    if (contextId === "webgl" || contextId === "webgl2" || contextId === "experimental-webgl") {
-      const nextAttributes = typeof attributes === "object" && attributes
-        ? { ...attributes, preserveDrawingBuffer: true }
-        : { preserveDrawingBuffer: true };
-      return Reflect.apply(originalGetContext, this, [contextId, nextAttributes]);
-    }
-    return Reflect.apply(originalGetContext, this, [contextId, attributes]);
-  } as typeof HTMLCanvasElement.prototype.getContext;
-
   if (config.mode === "loose") {
     if (!config.woditorSrc) {
       throw new Error("The WOLF loose-asset runtime script is missing.");
