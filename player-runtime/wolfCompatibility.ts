@@ -7,16 +7,6 @@ export type WolfPlayerSettings = {
     shiftKey?: boolean;
     action: string;
   }>;
-  dictionaryDismissGuard?: {
-    enabled?: boolean;
-    triggers?: Array<{
-      code?: string;
-      altKey?: boolean;
-      ctrlKey?: boolean;
-      metaKey?: boolean;
-      shiftKey?: boolean;
-    }>;
-  };
 };
 
 type WolfCompatibilityOptions = {
@@ -33,7 +23,6 @@ type WolfParentMessage = {
 function normalizeSettings(next: WolfPlayerSettings | undefined) {
   return {
     reservedKeys: Array.isArray(next?.reservedKeys) ? next.reservedKeys : [],
-    dictionaryDismissGuard: next?.dictionaryDismissGuard ?? { enabled: true, triggers: [] },
   };
 }
 
@@ -205,25 +194,8 @@ export function installWolfCompatibility(options: WolfCompatibilityOptions) {
     postParent({ type: "reserved-key", action: key.action, code: event.code });
   }
 
-  function handleDictionaryGuard(event: KeyboardEvent) {
-    const guard = settings.dictionaryDismissGuard;
-    if (guard?.enabled === false || !Array.isArray(guard?.triggers)) return;
-    const matched = guard.triggers.some((trigger) => {
-      if (!exactModifiers(event, trigger)) return false;
-      if (trigger.code) return trigger.code === event.code;
-      return (trigger.altKey && /^Alt/u.test(event.code))
-        || (trigger.ctrlKey && /^Control/u.test(event.code))
-        || (trigger.metaKey && /^Meta/u.test(event.code))
-        || (trigger.shiftKey && /^Shift/u.test(event.code));
-    });
-    if (!matched) return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-  }
-
   for (const type of ["keydown", "keypress", "keyup"] as const) {
     window.addEventListener(type, handleReservedKey, true);
-    window.addEventListener(type, handleDictionaryGuard, true);
   }
   window.addEventListener("message", handleParentMessage);
   window.addEventListener("resize", syncLayout);

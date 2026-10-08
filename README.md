@@ -1,9 +1,10 @@
 # Local Web Game Player
 
 Local Web Game Player runs compatible local HTML game exports directly in your
-browser. It supports RPG Maker MV and MZ, WOLF RPG, and TyranoScript games. You
-can open a local game folder or import a ZIP, then play without uploading game
-files to a server.
+browser. It supports RPG Maker MV/MZ, WOLF RPG, TyranoScript, Construct 2 NW.js, and
+Cocos Creator games. You can open a local
+game folder or import a ZIP, then play without uploading game files to a
+server.
 
 ## Demo
 
@@ -11,9 +12,9 @@ https://github.com/user-attachments/assets/56beacfb-855d-4bdf-87a2-8c388e0cc9b1
 
 ## Use Case
 
-Many RPG Maker, WOLF RPG, and TyranoScript games are distributed as desktop
-applications. This app is useful when playing web exports on Linux or macOS
-through a browser.
+Many RPG Maker, WOLF RPG, TyranoScript, Construct 2, and Cocos Creator games are
+distributed as desktop applications. This app is useful when playing web
+exports on Linux or macOS through a browser.
 
 It can also help with language study. The text overlay makes game text easier to
 select with browser tools such as the Yomitan extension. Yomitan is a separate
@@ -75,9 +76,32 @@ GameFolder/
   data/
 ```
 
-WOLF RPG games need a web export produced by Wolf Tools. Open the exported
-folder that contains `index.html`, `asset_manifest.json`, and the extracted game
+WOLF RPG games need a web export produced by [wolftools](https://github.com/popupie/wolftools).
+Open the exported folder that contains `index.html`, `asset_manifest.json`, and the extracted game
 assets. The player loads those assets individually as the game requests them.
+
+Construct 2 NW.js exports commonly use this layout:
+
+```text
+GameFolder/
+  index.html
+  c2runtime.js
+  data.js
+  images/
+  media/
+```
+
+Cocos Creator web exports commonly use this layout, sometimes nested in an
+Electron application's `resources` directory:
+
+```text
+GameFolder/
+  index.html
+  application.js
+  cocos-js/
+  src/
+  assets/
+```
 
 Desktop wrapper files such as Electron's `main.js`, `package.json`, and
 `node_modules` are not needed for browser playback. The player automatically
@@ -89,6 +113,21 @@ file saves.
 Extraction does not guarantee browser compatibility. Games that depend on
 unsupported Electron or Node.js APIs may still fail. Encrypted or DRM-protected
 packages are also not supported.
+
+### NW.js games packaged as `package.nw`
+
+The player does not extract `package.nw` automatically. A typical Construct 2
+`package.nw` is a ZIP archive, so extract it into a new folder with an archive
+tool or the command line:
+
+```sh
+unzip "/path/to/package.nw" -d "./nw_extract"
+```
+
+Open the extracted folder that directly contains `index.html`. Construct 2
+exports normally also contain `c2runtime.js` and `data.js`. The player serves
+the extracted images, audio, scripts, and other assets as separate files when
+the game requests them; it does not load `package.nw` as one large asset.
 
 ### Electron games packaged as `app.asar`
 
@@ -128,6 +167,15 @@ In the extracted folder, look for the same web entry point and supporting
 folders described above. The game files may be nested inside one or more
 subdirectories; open the folder that directly contains `index.html`.
 
+## Desktop API Compatibility
+
+For extracted RPG Maker and NW.js games, the player provides
+compatibility layers for common `path`, `fs`, `process`, `os`, `Buffer`,
+`events`, `stream`, `util`, `url`, `querystring`, `assert`, `timers`,
+`child_process`, NW.js, and Electron calls. CommonJS modules can be loaded from
+the game folder or `node_modules`, including packages that use a
+`package.json` `main` or string `browser` entry.
+
 ## Local Setup
 
 Install dependencies:
@@ -146,12 +194,6 @@ Build the app:
 
 ```sh
 pnpm run build
-```
-
-Run tests:
-
-```sh
-pnpm run test
 ```
 
 Preview the production build:

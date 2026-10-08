@@ -1,8 +1,12 @@
-export async function registerPlayerServiceWorker(): Promise<ServiceWorkerRegistration | undefined> {
+const PLAYER_SERVICE_WORKER_VERSION = "player-sw-11";
+
+export async function registerPlayerServiceWorker(): Promise<
+  ServiceWorkerRegistration | undefined
+> {
   if (!("serviceWorker" in navigator)) return undefined;
 
   const registration = await navigator.serviceWorker.register(
-    "/player-sw-v2.js?v=wolf-compat-11",
+    `/player-sw.js?v=${PLAYER_SERVICE_WORKER_VERSION}`,
     { scope: "/" },
   );
   if (!navigator.serviceWorker.controller) {

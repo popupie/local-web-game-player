@@ -17,6 +17,7 @@ interface LibraryPanelProps {
   directoryInputRef: RefObject<HTMLInputElement | null>;
   error: string | null;
   games: GameRecord[];
+  guardAvailable: boolean;
   notice: string | null;
   clearStorage: () => void;
   downloadSaves: (game: GameRecord) => void;
@@ -47,6 +48,7 @@ export function LibraryPanel({
   directoryInputRef,
   error,
   games,
+  guardAvailable,
   notice,
   clearStorage,
   downloadSaves,
@@ -179,7 +181,7 @@ export function LibraryPanel({
 
       <div className="sidebar-bottom">
         <DictionaryGuardPanel
-          activeGame={activeGame}
+          activeGame={guardAvailable ? activeGame : undefined}
           guard={activeGuard}
           onRecordTrigger={recordGuardTrigger}
           onRemoveTrigger={removeGuardTrigger}

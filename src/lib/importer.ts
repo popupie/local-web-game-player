@@ -109,6 +109,14 @@ function gameTitleFromBrowserGameJson(text: string): string {
   }
 }
 
+function gameTitleFromHtml(text: string): string {
+  const match = /<title[^>]*>([\s\S]*?)<\/title>/iu.exec(text);
+  return match?.[1]
+    ?.replace(/<[^>]+>/gu, "")
+    .replace(/\s+/gu, " ")
+    .trim() ?? "";
+}
+
 async function titleFromSystemJsonEntries<T extends { path: string }>(
   entries: T[],
   readText: (entry: T) => Promise<string>,
@@ -136,6 +144,53 @@ async function titleFromBrowserGameEntries<T extends { path: string }>(
     if (title) return title;
   }
   return "";
+}
+
+async function titleFromHtmlEntries<T extends { path: string }>(
+  entries: T[],
+  readText: (entry: T) => Promise<string>,
+): Promise<string> {
+  const candidates = entries
+    .filter((entry) => normalizeStoredPath(entry.path).toLowerCase().endsWith("index.html"))
+    .sort((a, b) => normalizeStoredPath(a.path).length - normalizeStoredPath(b.path).length);
+
+  for (const candidate of candidates) {
+    const title = gameTitleFromHtml(await readText(candidate));
+    if (title) return title;
+  }
+
+  return "";
+}
+
+async function unpackArchiveFiles(
+  archive: Blob,
+  label: string,
+  onProgress?: ProgressCallback,
+): Promise<Array<{ path: string; file: Blob }>> {
+  onProgress?.({ phase: "reading", label: `Opening ${label}`, completed: 0, total: archive.size });
+  const archiveData = typeof archive.arrayBuffer === "function" ? await archive.arrayBuffer() : archive;
+  const zip = await JSZip.loadAsync(archiveData, { decodeFileName: decodeZipFileName });
+  const zipEntries = Object.values(zip.files).filter((entry) => !entry.dir);
+  const files: Array<{ path: string; file: Blob }> = [];
+  let lastReportTime = performance.now();
+
+  for (let index = 0; index < zipEntries.length; index += 1) {
+    const entry = zipEntries[index];
+    const path = normalizeStoredPath(entry.name);
+    if (path) {
+      const blob = await entry.async("blob");
+      files.push({
+        path,
+        file: new Blob([blob], { type: detectMime(path) }),
+      });
+    }
+    if (shouldReportProgress(index + 1, zipEntries.length, lastReportTime)) {
+      lastReportTime = performance.now();
+      onProgress?.({ phase: "reading", label: `Unpacking ${label}`, completed: index + 1, total: zipEntries.length });
+    }
+  }
+
+  return stripCommonWrapper(files);
 }
 
 function projectFolderTitleFromPath(path: string): string {
@@ -203,9 +258,10 @@ export async function candidateFromFolder(
   }));
   const systemTitle = await titleFromSystemJsonEntries(normalized, (entry) => entry.file.text());
   const browserGameTitle = await titleFromBrowserGameEntries(normalized, (entry) => entry.file.text());
+  const htmlTitle = await titleFromHtmlEntries(normalized, (entry) => entry.file.text());
 
   return {
-    title: candidateTitle(systemTitle || browserGameTitle, entries.map((entry) => entry.path), fallbackTitle),
+    title: candidateTitle(systemTitle || browserGameTitle || htmlTitle, paths, fallbackTitle),
     files: sessionFiles,
     entryPath: findEntryPath(paths),
     totalBytes: sessionFiles.reduce((sum, entry) => sum + entry.size, 0)
@@ -290,11 +346,12 @@ export async function candidateFromDirectoryHandle(
   const normalized = stripCommonWrapper(entries);
   const paths = normalized.map((entry) => entry.path);
   const totalBytes = normalized.reduce((sum, entry) => sum + entry.size, 0);
+  const htmlTitle = await titleFromHtmlEntries(fileEntries, async (entry) => (await entry.handle.getFile()).text());
 
   return {
     title: candidateTitle(
-      systemTitle || browserGameTitle,
-      entries.map((entry) => entry.path),
+      systemTitle || browserGameTitle || htmlTitle,
+      paths,
       directoryHandle.name ?? FALLBACK_GAME_TITLE,
     ),
     files: normalized,
@@ -305,33 +362,14 @@ export async function candidateFromDirectoryHandle(
 }
 
 export async function candidateFromZip(file: File, onProgress?: ProgressCallback): Promise<ImportCandidate> {
-  onProgress?.({ phase: "reading", label: "Reading ZIP", completed: 0, total: file.size });
-  const zip = await JSZip.loadAsync(file, { decodeFileName: decodeZipFileName });
-  const zipEntries = Object.values(zip.files).filter((entry) => !entry.dir);
-  const files: Array<{ path: string; file: Blob }> = [];
-  let lastReportTime = performance.now();
-
-  for (let index = 0; index < zipEntries.length; index += 1) {
-    const entry = zipEntries[index];
-    const blob = await entry.async("blob");
-    const path = normalizeStoredPath(entry.name);
-    files.push({
-      path,
-      file: new Blob([blob], { type: detectMime(path) })
-    });
-    if (shouldReportProgress(index + 1, zipEntries.length, lastReportTime)) {
-      lastReportTime = performance.now();
-      onProgress?.({ phase: "reading", label: "Reading ZIP", completed: index + 1, total: zipEntries.length });
-    }
-  }
-
-  const normalized = stripCommonWrapper(files);
+  const normalized = await unpackArchiveFiles(file, "ZIP", onProgress);
   const paths = normalized.map((entry) => entry.path);
   const systemTitle = await titleFromSystemJsonEntries(normalized, (entry) => entry.file.text());
   const browserGameTitle = await titleFromBrowserGameEntries(normalized, (entry) => entry.file.text());
+  const htmlTitle = await titleFromHtmlEntries(normalized, (entry) => entry.file.text());
 
   return {
-    title: candidateTitle(systemTitle || browserGameTitle, files.map((entry) => entry.path), file.name),
+    title: candidateTitle(systemTitle || browserGameTitle || htmlTitle, paths, file.name),
     files: normalized,
     entryPath: findEntryPath(paths),
     totalBytes: normalized.reduce((sum, entry) => sum + entry.file.size, 0)

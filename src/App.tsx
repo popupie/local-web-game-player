@@ -240,6 +240,7 @@ export default function App() {
         directoryInputRef={directoryInputRef}
         error={library.error}
         games={library.games}
+        guardAvailable={overlayAvailable}
         notice={library.notice}
         clearStorage={() => void library.clearStorage()}
         downloadSaves={(game) => void library.downloadSaves(game)}

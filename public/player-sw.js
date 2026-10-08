@@ -4,14 +4,15 @@ const GAME_STORE = "games";
 const FILE_STORE = "files";
 const BLOB_STORE = "blobs";
 const HANDLE_STORE = "handles";
-const PLAYER_DESKTOP_RUNTIME_VERSION = "desktop-api-1";
-const PLAYER_BRIDGE_RUNTIME_VERSION = "bridge-api-2";
+
+const PLAYER_DESKTOP_RUNTIME_VERSION = "desktop-api-9";
+const PLAYER_BRIDGE_RUNTIME_VERSION = "bridge-api-13";
 const PLAYER_WOLF_RUNTIME_VERSION = "wolf-compat-11";
 const SESSION_FILE_TIMEOUT_MS = 10000;
-const EMPTY_SOURCE_MAP_TEXT = "{\"version\":3,\"sources\":[],\"mappings\":\"\"}";
+const EMPTY_SOURCE_MAP_TEXT = '{"version":3,"sources":[],"mappings":""}';
 const RPG_MAKER_ENCRYPTED_HEADER_BYTES = Uint8Array.from([
-  0x52, 0x50, 0x47, 0x4d, 0x56, 0x00, 0x00, 0x00,
-  0x00, 0x03, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x52, 0x50, 0x47, 0x4d, 0x56, 0x00, 0x00, 0x00, 0x00, 0x03, 0x01, 0x00, 0x00,
+  0x00, 0x00, 0x00,
 ]);
 const PLAIN_IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"];
 const ENCRYPTED_IMAGE_SUFFIXES = [".png_", ".png__", ".png___"];
@@ -22,8 +23,12 @@ const PNG_HEADER_BYTES = Uint8Array.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
 ]);
 const JPEG_HEADER_BYTES = Uint8Array.from([0xff, 0xd8, 0xff]);
-const GIF87A_HEADER_BYTES = Uint8Array.from([0x47, 0x49, 0x46, 0x38, 0x37, 0x61]);
-const GIF89A_HEADER_BYTES = Uint8Array.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
+const GIF87A_HEADER_BYTES = Uint8Array.from([
+  0x47, 0x49, 0x46, 0x38, 0x37, 0x61,
+]);
+const GIF89A_HEADER_BYTES = Uint8Array.from([
+  0x47, 0x49, 0x46, 0x38, 0x39, 0x61,
+]);
 const WEBP_RIFF_HEADER_BYTES = Uint8Array.from([0x52, 0x49, 0x46, 0x46]);
 const WEBP_WEBP_HEADER_BYTES = Uint8Array.from([0x57, 0x45, 0x42, 0x50]);
 const OGG_HEADER_BYTES = Uint8Array.from([0x4f, 0x67, 0x67, 0x53]);
@@ -280,7 +285,8 @@ function rpgMakerAssetPathAliases(path) {
     const stem = normalized.slice(0, -imageExtension.length);
     add(stem + ".rpgmvp");
     if (imageExtension === ".png") {
-      for (const encryptedSuffix of ENCRYPTED_IMAGE_SUFFIXES) add(stem + encryptedSuffix);
+      for (const encryptedSuffix of ENCRYPTED_IMAGE_SUFFIXES)
+        add(stem + encryptedSuffix);
     }
     return aliases;
   }
@@ -299,40 +305,62 @@ function rpgMakerAssetPathAliases(path) {
     if (!lowerPath.endsWith(encryptedSuffix)) continue;
     const stem = normalized.slice(0, -encryptedSuffix.length);
     add(stem + ".rpgmvp");
-    for (const candidateSuffix of ENCRYPTED_IMAGE_SUFFIXES) add(stem + candidateSuffix);
-    for (const imageExtension of PLAIN_IMAGE_EXTENSIONS) add(stem + imageExtension);
+    for (const candidateSuffix of ENCRYPTED_IMAGE_SUFFIXES)
+      add(stem + candidateSuffix);
+    for (const imageExtension of PLAIN_IMAGE_EXTENSIONS)
+      add(stem + imageExtension);
     return aliases;
   }
 
-  if (PLAIN_AUDIO_EXTENSIONS.some((extension) => lowerUnsuffixedPath.endsWith(extension))) {
+  if (
+    PLAIN_AUDIO_EXTENSIONS.some((extension) =>
+      lowerUnsuffixedPath.endsWith(extension),
+    )
+  ) {
     add(unsuffixedPath);
-    for (const candidate of suffixedPathCandidates(unsuffixedPath)) add(candidate);
+    for (const candidate of suffixedPathCandidates(unsuffixedPath))
+      add(candidate);
     for (const encryptedExtension of ENCRYPTED_AUDIO_EXTENSIONS) {
-      const encryptedPath = pathWithExtension(unsuffixedPath, encryptedExtension);
+      const encryptedPath = pathWithExtension(
+        unsuffixedPath,
+        encryptedExtension,
+      );
       add(encryptedPath);
       if (encryptedPath) {
-        for (const candidate of suffixedPathCandidates(encryptedPath)) add(candidate);
+        for (const candidate of suffixedPathCandidates(encryptedPath))
+          add(candidate);
       }
     }
     return aliases;
   }
 
-  if (ENCRYPTED_AUDIO_EXTENSIONS.some((extension) => lowerUnsuffixedPath.endsWith(extension))) {
+  if (
+    ENCRYPTED_AUDIO_EXTENSIONS.some((extension) =>
+      lowerUnsuffixedPath.endsWith(extension),
+    )
+  ) {
     add(unsuffixedPath);
-    for (const candidate of suffixedPathCandidates(unsuffixedPath)) add(candidate);
+    for (const candidate of suffixedPathCandidates(unsuffixedPath))
+      add(candidate);
     for (const plainExtension of PLAIN_AUDIO_EXTENSIONS) {
       const plainPath = pathWithExtension(unsuffixedPath, plainExtension);
       add(plainPath);
       if (plainPath) {
-        for (const candidate of suffixedPathCandidates(plainPath)) add(candidate);
+        for (const candidate of suffixedPathCandidates(plainPath))
+          add(candidate);
       }
     }
     return aliases;
   }
 
-  if (PLAIN_VIDEO_EXTENSIONS.some((extension) => lowerUnsuffixedPath.endsWith(extension))) {
+  if (
+    PLAIN_VIDEO_EXTENSIONS.some((extension) =>
+      lowerUnsuffixedPath.endsWith(extension),
+    )
+  ) {
     add(unsuffixedPath);
-    for (const candidate of suffixedPathCandidates(unsuffixedPath)) add(candidate);
+    for (const candidate of suffixedPathCandidates(unsuffixedPath))
+      add(candidate);
     for (const videoExtension of PLAIN_VIDEO_EXTENSIONS) {
       const videoPath = pathWithExtension(unsuffixedPath, videoExtension);
       add(videoPath);
@@ -361,7 +389,8 @@ function pathLookupAliases(path) {
   }
 
   const baseCandidates = [normalized];
-  for (const alias of unicodePathAliases(normalized)) baseCandidates.push(alias);
+  for (const alias of unicodePathAliases(normalized))
+    baseCandidates.push(alias);
   for (const alias of mojibakePathAliases(normalized)) {
     baseCandidates.push(alias);
     for (const unicodeAlias of unicodePathAliases(alias)) {
@@ -392,15 +421,13 @@ function getMatchByPathWithAliases(map, path) {
 
   for (const candidate of candidates) {
     const match =
-      map.exact.get(candidate) ||
-      map.lower.get(candidate.toLowerCase());
+      map.exact.get(candidate) || map.lower.get(candidate.toLowerCase());
     if (match) return { ...match, requestedPath: normalized };
   }
 
   for (const candidate of candidates) {
     const match =
-      map.alias.get(candidate) ||
-      map.lowerAlias.get(candidate.toLowerCase());
+      map.alias.get(candidate) || map.lowerAlias.get(candidate.toLowerCase());
     if (match) return { ...match, requestedPath: normalized };
   }
 
@@ -627,18 +654,23 @@ function pathHasExtensionIgnoringSuffixMarkers(path, extension) {
 
 function isPlainImagePath(path) {
   const lowerPath = path.toLowerCase();
-  return PLAIN_IMAGE_EXTENSIONS.some((extension) => lowerPath.endsWith(extension));
+  return PLAIN_IMAGE_EXTENSIONS.some((extension) =>
+    lowerPath.endsWith(extension),
+  );
 }
 
 function isPlainAudioPath(path) {
   const lowerPath = path.toLowerCase();
-  return PLAIN_AUDIO_EXTENSIONS.some((extension) => lowerPath.endsWith(extension));
+  return PLAIN_AUDIO_EXTENSIONS.some((extension) =>
+    lowerPath.endsWith(extension),
+  );
 }
 
 function plainMimeForPath(path) {
   const lowerPath = path.toLowerCase();
   if (lowerPath.endsWith(".png")) return "image/png";
-  if (lowerPath.endsWith(".jpg") || lowerPath.endsWith(".jpeg")) return "image/jpeg";
+  if (lowerPath.endsWith(".jpg") || lowerPath.endsWith(".jpeg"))
+    return "image/jpeg";
   if (lowerPath.endsWith(".webp")) return "image/webp";
   if (lowerPath.endsWith(".gif")) return "image/gif";
   if (lowerPath.endsWith(".ogg")) return "audio/ogg";
@@ -662,8 +694,8 @@ function isEncryptedAudioPath(path) {
   const lowerPath = path.toLowerCase();
   return (
     PLAIN_AUDIO_EXTENSIONS.some((extension) =>
-      [extension + "_", extension + "__", extension + "___"].some((encryptedSuffix) =>
-        lowerPath.endsWith(encryptedSuffix),
+      [extension + "_", extension + "__", extension + "___"].some(
+        (encryptedSuffix) => lowerPath.endsWith(encryptedSuffix),
       ),
     ) ||
     pathHasExtensionIgnoringSuffixMarkers(lowerPath, ".rpgmvo") ||
@@ -671,7 +703,10 @@ function isEncryptedAudioPath(path) {
   );
 }
 
-function shouldEncryptPlainFallbackForEncryptedRequest(requestedPath, matchedPath) {
+function shouldEncryptPlainFallbackForEncryptedRequest(
+  requestedPath,
+  matchedPath,
+) {
   return (
     (isEncryptedImagePath(requestedPath) && isPlainImagePath(matchedPath)) ||
     (isEncryptedAudioPath(requestedPath) && isPlainAudioPath(matchedPath))
@@ -700,7 +735,10 @@ function imageMimeForBytes(bytes) {
   if (!bytes) return undefined;
   if (bytesStartWith(bytes, PNG_HEADER_BYTES)) return "image/png";
   if (bytesStartWith(bytes, JPEG_HEADER_BYTES)) return "image/jpeg";
-  if (bytesStartWith(bytes, GIF87A_HEADER_BYTES) || bytesStartWith(bytes, GIF89A_HEADER_BYTES)) {
+  if (
+    bytesStartWith(bytes, GIF87A_HEADER_BYTES) ||
+    bytesStartWith(bytes, GIF89A_HEADER_BYTES)
+  ) {
     return "image/gif";
   }
   if (
@@ -718,7 +756,8 @@ function mediaMimeForBytes(bytes, fallbackMime) {
   if (imageMime) return imageMime;
   if (bytesStartWith(bytes, OGG_HEADER_BYTES)) return "audio/ogg";
   if (bytesStartWith(bytes, ID3_HEADER_BYTES)) return "audio/mpeg";
-  if (bytes.byteLength >= 2 && bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0) return "audio/mpeg";
+  if (bytes.byteLength >= 2 && bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0)
+    return "audio/mpeg";
   if (
     bytes.byteLength >= 12 &&
     bytesStartWith(bytes, RIFF_HEADER_BYTES) &&
@@ -727,8 +766,13 @@ function mediaMimeForBytes(bytes, fallbackMime) {
     return "audio/wav";
   }
   if (bytesStartWith(bytes, EBML_HEADER_BYTES)) return "video/webm";
-  if (bytes.byteLength >= 12 && bytesStartWith(bytes.slice(4, 8), FTYP_HEADER_BYTES)) {
-    return fallbackMime === "audio/mp4" || fallbackMime === "video/mp4" ? fallbackMime : "video/mp4";
+  if (
+    bytes.byteLength >= 12 &&
+    bytesStartWith(bytes.slice(4, 8), FTYP_HEADER_BYTES)
+  ) {
+    return fallbackMime === "audio/mp4" || fallbackMime === "video/mp4"
+      ? fallbackMime
+      : "video/mp4";
   }
   return fallbackMime;
 }
@@ -750,7 +794,11 @@ async function readRpgMakerEncryptionKey(gameId, requestClientId) {
     const systemRecord = await getStoredFile(gameId, systemPath);
     if (!systemRecord) continue;
 
-    const blob = await getBlobForStoredRecord(gameId, systemRecord, requestClientId);
+    const blob = await getBlobForStoredRecord(
+      gameId,
+      systemRecord,
+      requestClientId,
+    );
     if (!blob) continue;
 
     try {
@@ -774,32 +822,48 @@ async function getRpgMakerEncryptionKey(gameId, requestClientId) {
 }
 
 function encryptRpgMakerAsset(bytes, key) {
-  const encrypted = new Uint8Array(RPG_MAKER_ENCRYPTED_HEADER_BYTES.byteLength + bytes.byteLength);
+  const encrypted = new Uint8Array(
+    RPG_MAKER_ENCRYPTED_HEADER_BYTES.byteLength + bytes.byteLength,
+  );
   encrypted.set(RPG_MAKER_ENCRYPTED_HEADER_BYTES, 0);
   encrypted.set(bytes, RPG_MAKER_ENCRYPTED_HEADER_BYTES.byteLength);
   const bodyOffset = RPG_MAKER_ENCRYPTED_HEADER_BYTES.byteLength;
-  for (let index = 0; index < Math.min(16, bytes.byteLength, key.byteLength); index += 1) {
+  for (
+    let index = 0;
+    index < Math.min(16, bytes.byteLength, key.byteLength);
+    index += 1
+  ) {
     encrypted[bodyOffset + index] = bytes[index] ^ key[index];
   }
   return encrypted;
 }
 
 function decryptRpgMakerAsset(bytes, key) {
-  if (!bytesStartWith(bytes, RPG_MAKER_ENCRYPTED_HEADER_BYTES)) return undefined;
+  if (!bytesStartWith(bytes, RPG_MAKER_ENCRYPTED_HEADER_BYTES))
+    return undefined;
   const body = bytes.slice(RPG_MAKER_ENCRYPTED_HEADER_BYTES.byteLength);
-  for (let index = 0; index < Math.min(16, body.byteLength, key.byteLength); index += 1) {
+  for (
+    let index = 0;
+    index < Math.min(16, body.byteLength, key.byteLength);
+    index += 1
+  ) {
     body[index] ^= key[index];
   }
   return body;
 }
 
 function isExactAssetRequestMatch(match) {
-  return normalizePath(match.requestedPath) === normalizePath(match.matchedPath);
+  return (
+    normalizePath(match.requestedPath) === normalizePath(match.matchedPath)
+  );
 }
 
 function isTyranoConfigPath(path) {
   const normalized = normalizePath(path).toLowerCase();
-  return normalized === "data/system/config.tjs" || normalized.endsWith("/data/system/config.tjs");
+  return (
+    normalized === "data/system/config.tjs" ||
+    normalized.endsWith("/data/system/config.tjs")
+  );
 }
 
 function isTyranoGame(files) {
@@ -808,7 +872,8 @@ function isTyranoGame(files) {
 
   for (const file of files) {
     const path = normalizePath(file.path).toLowerCase();
-    hasRuntime ||= path === "tyrano/tyrano.js" || path.endsWith("/tyrano/tyrano.js");
+    hasRuntime ||=
+      path === "tyrano/tyrano.js" || path.endsWith("/tyrano/tyrano.js");
     hasConfig ||= isTyranoConfigPath(path);
     if (hasRuntime && hasConfig) return true;
   }
@@ -824,7 +889,8 @@ function isWolfRpgGame(files) {
   for (const file of files) {
     const path = normalizePath(file.path).toLowerCase();
     hasRuntimeScript ||= path === "woditor.js" || path.endsWith("/woditor.js");
-    hasRuntimeModule ||= path === "woditor.wasm" || path.endsWith("/woditor.wasm");
+    hasRuntimeModule ||=
+      path === "woditor.wasm" || path.endsWith("/woditor.wasm");
     hasGameData ||= ["data.wolf", "asset_manifest.json"].some(
       (name) => path === name || path.endsWith(`/${name}`),
     );
@@ -840,8 +906,10 @@ function isLooseWolfRpgGame(files) {
   let hasLazyLoader = false;
   for (const file of files) {
     const path = normalizePath(file.path).toLowerCase();
-    hasManifest ||= path === "asset_manifest.json" || path.endsWith("/asset_manifest.json");
-    hasLazyLoader ||= path === "lib/lazy_assets.js" || path.endsWith("/lib/lazy_assets.js");
+    hasManifest ||=
+      path === "asset_manifest.json" || path.endsWith("/asset_manifest.json");
+    hasLazyLoader ||=
+      path === "lib/lazy_assets.js" || path.endsWith("/lib/lazy_assets.js");
   }
   return hasManifest && hasLazyLoader;
 }
@@ -853,15 +921,33 @@ function adaptTyranoConfig(text) {
   );
 }
 
-async function transformAssetBlobForRequest(gameId, match, blob, requestClientId) {
+function isSteam4C2BridgePath(path) {
+  const normalized = normalizePath(path).toLowerCase();
+  return normalized === "steam4c2.js" || normalized.endsWith("/steam4c2.js");
+}
+
+function adaptSteam4C2Bridge(text) {
+  return text.replace(
+    /\bmodule\.exports\s*=\s*Steam4C2\s*;/gu,
+    'if (typeof module !== "undefined" && module) module.exports = Steam4C2;',
+  );
+}
+
+async function transformAssetBlobForRequest(
+  gameId,
+  match,
+  blob,
+  requestClientId,
+) {
   if (isExactAssetRequestMatch(match)) {
     return { blob };
   }
 
-  const shouldEncryptPlainFallback = shouldEncryptPlainFallbackForEncryptedRequest(
-    match.requestedPath,
-    match.matchedPath,
-  );
+  const shouldEncryptPlainFallback =
+    shouldEncryptPlainFallbackForEncryptedRequest(
+      match.requestedPath,
+      match.matchedPath,
+    );
   const decryptedMime = plainRequestEncryptedFallbackMime(
     match.requestedPath,
     match.matchedPath,
@@ -873,7 +959,9 @@ async function transformAssetBlobForRequest(gameId, match, blob, requestClientId
   const key = await getRpgMakerEncryptionKey(gameId, requestClientId);
   if (!key) {
     return {
-      error: new Response("RPG Maker encryption key not found", { status: 404 }),
+      error: new Response("RPG Maker encryption key not found", {
+        status: 404,
+      }),
     };
   }
 
@@ -894,9 +982,12 @@ async function transformAssetBlobForRequest(gameId, match, blob, requestClientId
   const decrypted = decryptRpgMakerAsset(bytes, key);
   if (!decrypted) {
     return {
-      error: new Response("Encrypted RPG Maker asset fallback has an invalid header", {
-        status: 404,
-      }),
+      error: new Response(
+        "Encrypted RPG Maker asset fallback has an invalid header",
+        {
+          status: 404,
+        },
+      ),
     };
   }
   const mime = mediaMimeForBytes(decrypted, decryptedMime);
@@ -923,13 +1014,16 @@ async function serveGameFile(url, request) {
   const match = await getStoredFileMatch(gameId, path);
   if (!match) {
     if (path.endsWith(".map")) {
-      return new Response(request.method === "HEAD" ? null : EMPTY_SOURCE_MAP_TEXT, {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-          "Cache-Control": "no-store",
+      return new Response(
+        request.method === "HEAD" ? null : EMPTY_SOURCE_MAP_TEXT,
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-store",
+          },
         },
-      });
+      );
     }
     if (isMissingPluginMarkerPath(path)) {
       return new Response(request.method === "HEAD" ? null : "", {
@@ -984,6 +1078,13 @@ async function serveGameFile(url, request) {
     }
   }
 
+  if (isSteam4C2BridgePath(record.path)) {
+    return new Response(adaptSteam4C2Bridge(await responseBlob.text()), {
+      status: 200,
+      headers,
+    });
+  }
+
   if ((record.mime || "").startsWith("text/html")) {
     const html = await responseBlob.text();
     const files = await getGameFiles(gameId);
@@ -1028,8 +1129,10 @@ function desktopRuntimeConfig(game, files) {
 }
 
 function adaptWolfHtml(html, game, looseAssets) {
-  const lazyLoaderPattern = /<script\b[^>]*\bsrc=["'][^"']*lib\/lazy_assets\.js(?:\?[^"']*)?["'][^>]*><\/script>/gi;
-  const woditorPattern = /<script\b[^>]*\bsrc=["']([^"']*woditor\.js(?:\?[^"']*)?)["'][^>]*><\/script>/i;
+  const lazyLoaderPattern =
+    /<script\b[^>]*\bsrc=["'][^"']*lib\/lazy_assets\.js(?:\?[^"']*)?["'][^>]*><\/script>/gi;
+  const woditorPattern =
+    /<script\b[^>]*\bsrc=["']([^"']*woditor\.js(?:\?[^"']*)?)["'][^>]*><\/script>/i;
   const match = woditorPattern.exec(html);
   if (!match) return html;
 
@@ -1061,16 +1164,21 @@ function injectBridge(html, game, files) {
   const preparedHtml = isWolfRpg
     ? adaptWolfHtml(html, game, isLooseWolfRpgGame(files))
     : html;
-  const desktopScripts = isTyrano || isWolfRpg ? "" : [
-    `<script>window.__MZ_PLAYER_DESKTOP_CONFIG=${jsonForScript(
-      desktopRuntimeConfig(game, files),
-    )};</script>`,
-    `<script src="/mz-player-runtime/buffer.js?v=${PLAYER_DESKTOP_RUNTIME_VERSION}"></script>`,
-    `<script src="/mz-player-runtime/desktop.js?v=${PLAYER_DESKTOP_RUNTIME_VERSION}"></script>`,
-  ].join("");
+  const desktopScripts =
+    isTyrano || isWolfRpg
+      ? ""
+      : [
+          `<script>window.__MZ_PLAYER_DESKTOP_CONFIG=${jsonForScript(
+            desktopRuntimeConfig(game, files),
+          )};</script>`,
+          `<script src="/mz-player-runtime/buffer.js?v=${PLAYER_DESKTOP_RUNTIME_VERSION}"></script>`,
+          `<script src="/mz-player-runtime/desktop.js?v=${PLAYER_DESKTOP_RUNTIME_VERSION}"></script>`,
+        ].join("");
   const runtimeScripts = [
     desktopScripts,
-    isWolfRpg ? "" : `<script src="/runtime-bridge.js?v=${PLAYER_BRIDGE_RUNTIME_VERSION}"></script>`,
+    isWolfRpg
+      ? ""
+      : `<script src="/runtime-bridge.js?v=${PLAYER_BRIDGE_RUNTIME_VERSION}"></script>`,
   ].join("");
   const config = `${bridgeConfig}${runtimeScripts}`;
 

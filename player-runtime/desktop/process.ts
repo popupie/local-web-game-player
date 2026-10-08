@@ -1,6 +1,7 @@
 // @ts-nocheck
 
-export function createProcessRuntime() {
+export function createProcessRuntime(options = {}) {
+  let currentWorkingDirectory = options.cwd || "/www";
   function processNextTick(callback) {
     if (typeof callback !== "function") {
       throw new TypeError("process.nextTick callback must be a function.");
@@ -75,16 +76,33 @@ export function createProcessRuntime() {
 
     setProcessDefault(processObject, "title", "browser");
     setProcessDefault(processObject, "browser", true);
-    setProcessDefault(processObject, "platform", "browser");
+    if (options.platform) {
+      setProcessValue(processObject, "platform", options.platform);
+    } else {
+      setProcessDefault(processObject, "platform", "browser");
+    }
+    if (options.arch) {
+      setProcessValue(processObject, "arch", options.arch);
+    } else {
+      setProcessDefault(processObject, "arch", "x64");
+    }
     setProcessDefault(processObject, "env", {});
-    setProcessDefault(processObject, "argv", []);
-    setProcessDefault(processObject, "version", "");
-    setProcessDefault(processObject, "versions", {});
+    setProcessDefault(processObject, "argv", ["/Game.exe"]);
+    setProcessDefault(processObject, "execArgv", []);
+    setProcessDefault(processObject, "version", "v16.20.2");
+    const versions =
+      processObject.versions && typeof processObject.versions === "object"
+        ? processObject.versions
+        : {};
+    setProcessDefault(versions, "node", "16.20.2");
+    setProcessDefault(versions, "nw", "0.72.0");
+    setProcessDefault(versions, "node-webkit", versions.nw);
+    setProcessValue(processObject, "versions", versions);
     setProcessDefault(processObject, "execPath", "/Game.exe");
     setProcessDefault(processObject, "mainModule", {
       filename: "/www/index.html",
     });
-    setProcessDefault(processObject, "cwd", () => "/www");
+    setProcessDefault(processObject, "cwd", () => currentWorkingDirectory);
     setProcessDefault(processObject, "nextTick", processNextTick);
     setProcessDefault(processObject, "uptime", processUptime);
     setProcessDefault(processObject, "hrtime", processHrtime);
@@ -96,8 +114,27 @@ export function createProcessRuntime() {
     setProcessDefault(processObject, "removeListener", noopProcessEvent);
     setProcessDefault(processObject, "removeAllListeners", noopProcessEvent);
     setProcessDefault(processObject, "emit", () => false);
-    setProcessDefault(processObject, "chdir", unsupportedProcessOperation("chdir"));
+    setProcessDefault(processObject, "exit", () => undefined);
+    setProcessDefault(processObject, "kill", () => false);
+    setProcessDefault(processObject, "getuid", () => -1);
+    setProcessDefault(processObject, "getgid", () => -1);
+    setProcessDefault(processObject, "chdir", (directory) => {
+      const value = String(directory ?? "").replace(/\\+/g, "/");
+      if (!value) throw new TypeError("directory must not be empty.");
+      currentWorkingDirectory = value.startsWith("/")
+        ? value
+        : currentWorkingDirectory.replace(/\/+$/, "") + "/" + value;
+    });
     setProcessDefault(processObject, "binding", unsupportedProcessOperation("binding"));
+    setProcessDefault(processObject, "memoryUsage", () => ({
+      arrayBuffers: 0,
+      external: 0,
+      heapTotal: 0,
+      heapUsed: 0,
+      rss: 0,
+    }));
+    setProcessDefault(processObject, "cpuUsage", () => ({ system: 0, user: 0 }));
+    setProcessDefault(processObject, "emitWarning", (warning) => console.warn(warning));
 
     if (typeof processObject.cwd !== "function") {
       setProcessValue(processObject, "cwd", () => "/www");
