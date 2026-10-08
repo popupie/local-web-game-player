@@ -10,7 +10,7 @@ export function postParent(message) {
   }
 }
 
-export function createParentBridge({ overlay, postParentMessage, settings, viewport }) {
+export function createParentBridge({ gameId, overlay, postParentMessage, settings, viewport }) {
   function installReservedKeys() {
     window.addEventListener("keydown", handleReservedKeyEvent, true);
   }
@@ -94,6 +94,7 @@ export function createParentBridge({ overlay, postParentMessage, settings, viewp
   }
 
   function postStatus() {
+    postParentMessage({ type: "overlay-availability", gameId, available: true });
     postParentMessage({ type: "overlay-status", overlayEnabled: settings.overlayEnabled, readerMode: settings.readerMode });
   }
 

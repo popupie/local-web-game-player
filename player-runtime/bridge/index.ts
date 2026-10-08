@@ -28,6 +28,7 @@ import { installRpgMakerEncryptionFallback } from "./encryptionFallback";
     scheduleFlush: overlay.scheduleFlush,
   });
   const parent = createParentBridge({
+    gameId: config.gameId,
     overlay,
     postParentMessage,
     settings,

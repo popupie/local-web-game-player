@@ -230,6 +230,38 @@ export async function putStoredFiles(records: StoredGameFile[]): Promise<void> {
   }
 }
 
+export async function getStoredFilesForGame(gameId: string): Promise<StoredGameFile[]> {
+  const db = await openPlayerDb();
+  try {
+    const transaction = db.transaction(FILE_STORE, "readonly");
+    return await requestToPromise<StoredGameFile[]>(
+      transaction.objectStore(FILE_STORE).index("gameId").getAll(IDBKeyRange.only(gameId)),
+    );
+  } finally {
+    db.close();
+  }
+}
+
+export async function getIndexedDbBlobs(storageRefs: string[]): Promise<Map<string, Blob>> {
+  if (storageRefs.length === 0) return new Map();
+
+  const db = await openPlayerDb();
+  try {
+    const transaction = db.transaction(BLOB_STORE, "readonly");
+    const store = transaction.objectStore(BLOB_STORE);
+    const requests = storageRefs.map(async (storageRef) => {
+      const record = await requestToPromise<StoredBlobRecord | undefined>(store.get(storageRef));
+      return [storageRef, record?.blob] as const;
+    });
+    const records = await Promise.all(requests);
+    return new Map(
+      records.filter((record): record is readonly [string, Blob] => Boolean(record[1])),
+    );
+  } finally {
+    db.close();
+  }
+}
+
 export async function replaceStoredFilesForGame(
   gameId: string,
   records: StoredGameFile[],

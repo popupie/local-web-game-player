@@ -13,6 +13,7 @@ interface PlayerPanelProps {
   frameWrapRef: RefObject<HTMLDivElement | null>;
   gameAspectRatio: number;
   logsOpen: boolean;
+  overlayAvailable: boolean;
   onIframeLoad: () => void;
   onRequestFullscreen: () => void;
   onToggleOverlay: (game: GameRecord) => void;
@@ -31,6 +32,7 @@ export function PlayerPanel({
   frameWrapRef,
   gameAspectRatio,
   logsOpen,
+  overlayAvailable,
   onIframeLoad,
   onRequestFullscreen,
   onToggleOverlay,
@@ -51,9 +53,10 @@ export function PlayerPanel({
           <section className="home-guide-intro" aria-labelledby="home-title">
             <h2 id="home-title">How to use this player</h2>
             <p>
-              Open a local RPG Maker MV/MZ, TyranoScript, extracted Construct
-              2/NW.js, or Cocos Creator/Electron export, then select it from the
-              library. The folder or ZIP needs a game <code>index.html</code>.
+              Open a local RPG Maker MV/MZ, Wolf RPG, TyranoScript, extracted
+              Construct 2/NW.js, or Cocos Creator/Electron export, then select
+              it from the library. The folder or ZIP needs a game{" "}
+              <code>index.html</code>.
             </p>
             <p>
               If the game files are packed inside an archive or executable, see
@@ -115,8 +118,9 @@ export function PlayerPanel({
                 <div className="home-control-cell">
                   <Icon name="layers" />
                   <span>
-                    Overlay captures text or sprite-font dialogue for selection
-                    and the text log.
+                    Overlay captures RPG Maker canvas text and TyranoScript HTML
+                    dialogue for selection and the text log. WOLF games do not
+                    use text overlays or logging.
                   </span>
                 </div>
 
@@ -186,13 +190,20 @@ export function PlayerPanel({
               <button
                 type="button"
                 aria-label="Open text overlay"
-                title="Open text overlay"
-                aria-pressed={activeGame.settings.overlayEnabled}
+                title={
+                  overlayAvailable
+                    ? "Open text overlay"
+                    : "Text overlay unavailable for this game"
+                }
+                aria-pressed={
+                  overlayAvailable && activeGame.settings.overlayEnabled
+                }
+                disabled={!overlayAvailable}
                 onClick={() => onToggleOverlay(activeGame)}
               >
                 <Icon name="layers" />
               </button>
-              {activeGame.settings.overlayEnabled && (
+              {overlayAvailable && activeGame.settings.overlayEnabled && (
                 <button
                   type="button"
                   className="show-mode-button"
@@ -255,12 +266,14 @@ export function PlayerPanel({
                 onLoad={onIframeLoad}
               />
             </div>
-            <TextLogPanel
-              logsOpen={logsOpen}
-              setLogsOpen={setLogsOpen}
-              textLogLimit={textLogLimit}
-              textLogs={textLogs}
-            />
+            {overlayAvailable && (
+              <TextLogPanel
+                logsOpen={logsOpen}
+                setLogsOpen={setLogsOpen}
+                textLogLimit={textLogLimit}
+                textLogs={textLogs}
+              />
+            )}
           </div>
         </>
       )}

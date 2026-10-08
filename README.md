@@ -1,7 +1,7 @@
 # Local Web Game Player
 
 Local Web Game Player runs compatible local HTML game exports directly in your
-browser. It supports RPG Maker MV/MZ, TyranoScript, Construct 2 NW.js, and
+browser. It supports RPG Maker MV/MZ, WOLF RPG, TyranoScript, Construct 2 NW.js, and
 Cocos Creator games. You can open a local
 game folder or import a ZIP, then play without uploading game files to a
 server.
@@ -12,7 +12,7 @@ https://github.com/user-attachments/assets/56beacfb-855d-4bdf-87a2-8c388e0cc9b1
 
 ## Use Case
 
-Many RPG Maker, TyranoScript, Construct 2, and Cocos Creator games are
+Many RPG Maker, WOLF RPG, TyranoScript, Construct 2, and Cocos Creator games are
 distributed as desktop applications. This app is useful when playing web
 exports on Linux or macOS through a browser.
 
@@ -75,6 +75,10 @@ GameFolder/
   tyrano/
   data/
 ```
+
+WOLF RPG games need a web export produced by [wolftools](https://github.com/popupie/wolftools).
+Open the exported folder that contains `index.html`, `asset_manifest.json`, and the extracted game
+assets. The player loads those assets individually as the game requests them.
 
 Construct 2 NW.js exports commonly use this layout:
 
@@ -215,6 +219,6 @@ older folder picker.
 
 ## Notes
 
-This is an unofficial player for user-provided web game exports. It is not
-affiliated with or endorsed by Gotcha Gotcha Games, KADOKAWA, Degica, or the
-TyranoScript project.
+This is an unofficial player for user provided web game exports. It is not
+affiliated with or endorsed by Gotcha Gotcha Games, KADOKAWA, Degica, SmokingWOLF,
+or the TyranoScript project.

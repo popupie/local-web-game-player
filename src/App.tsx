@@ -7,6 +7,7 @@ import { useTextLog } from "./hooks/useTextLog";
 import { chordFromEvent, sameChord } from "./lib/keyChords";
 import { reservedKeyForEvent } from "./lib/keys";
 import { defaultDictionaryDismissGuard, dictionaryGuardFor, overlayTogglePatch, showTogglePatch } from "./lib/playerSettings";
+import { createWolfAssetObjectUrls, type WolfAssetObjectUrlSet } from "./lib/wolfAssets";
 import type { DictionaryDismissGuard, GameRecord, PlayerToParentMessage } from "./lib/types";
 
 const textLogLimit = 100;
@@ -15,9 +16,17 @@ const unsavedProgressWarning = "Leave the current game? Unsaved progress in the 
 
 export default function App() {
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const [overlayAvailability, setOverlayAvailability] = useState<{
+    gameId: string;
+    available: boolean;
+  } | null>(null);
   const [recordingGuardTrigger, setRecordingGuardTrigger] = useState(false);
   const directoryInputRef = useRef<HTMLInputElement>(null);
   const zipInputRef = useRef<HTMLInputElement>(null);
+  const wolfAssetsRef = useRef<{
+    key: string;
+    promise: Promise<WolfAssetObjectUrlSet>;
+  } | undefined>(undefined);
 
   const library = useGameLibrary(() => setRuntimeError(null));
   const player = usePlayerFrame(library.activeGame?.id);
@@ -29,12 +38,66 @@ export default function App() {
     textLogs,
   } = useTextLog(textLogLimit);
   const activeDictionaryGuard = library.activeGame ? dictionaryGuardFor(library.activeGame) : defaultDictionaryDismissGuard;
+  const overlayAvailable = Boolean(
+    library.activeGame
+    && overlayAvailability?.gameId === library.activeGame.id
+    && overlayAvailability.available,
+  );
   const quotaPercent = library.storage?.quota && library.storage.usage ? Math.min(100, Math.round((library.storage.usage / library.storage.quota) * 100)) : 0;
+  function wolfAssetsForActiveGame(): Promise<WolfAssetObjectUrlSet> {
+    const game = library.activeGame;
+    if (!game) return Promise.reject(new Error("No WOLF game is active."));
+    // Woditor can request a new asset long after startup. A settings update must
+    // not revoke the active iframe's URLs while the game is still running.
+    const key = game.id;
+    const current = wolfAssetsRef.current;
+    if (current?.key === key) return current.promise;
+    if (current) void current.promise.then((value) => value.release(), () => undefined);
+    const promise = createWolfAssetObjectUrls(game.id);
+    wolfAssetsRef.current = { key, promise };
+    return promise;
+  }
+
+  async function respondWithWolfAssets(
+    event: MessageEvent<PlayerToParentMessage>,
+    message: Extract<PlayerToParentMessage, { type: "wolf-assets-request" }>,
+  ) {
+    const game = library.activeGame;
+    if (
+      !game ||
+      message.gameId !== game.id ||
+      event.source !== player.frameRef.current?.contentWindow
+    ) return;
+
+    try {
+      const value = await wolfAssetsForActiveGame();
+      (event.source as Window).postMessage({
+        type: "wolf-assets-response",
+        requestId: message.requestId,
+        assets: value.assets,
+      }, window.location.origin);
+    } catch (cause) {
+      const error = cause instanceof Error ? cause.message : "Could not prepare WOLF assets.";
+      setRuntimeError(error);
+      (event.source as Window).postMessage({
+        type: "wolf-assets-response",
+        requestId: message.requestId,
+        error,
+      }, window.location.origin);
+    }
+  }
 
   useEffect(() => {
     const onMessage = (event: MessageEvent<PlayerToParentMessage>) => {
       if (event.origin !== window.location.origin || !event.data || typeof event.data !== "object") return;
       const message = event.data;
+      if (message.type === "wolf-assets-request") {
+        void respondWithWolfAssets(event, message);
+        return;
+      }
+      if (message.type === "overlay-availability") {
+        setOverlayAvailability({ gameId: message.gameId, available: message.available });
+      }
       if (message.type === "reserved-key") {
         void handleReservedAction(message.action);
       }
@@ -105,6 +168,7 @@ export default function App() {
 
   async function handleReservedAction(action: string) {
     if (!library.activeGame) return;
+    if (!overlayAvailable && (action === "toggleOverlay" || action === "toggleReader")) return;
     if (action === "toggleOverlay") {
       await setGameSettings(library.activeGame, overlayTogglePatch(library.activeGame));
       player.scheduleFocusPlayer();
@@ -176,6 +240,7 @@ export default function App() {
         directoryInputRef={directoryInputRef}
         error={library.error}
         games={library.games}
+        guardAvailable={overlayAvailable}
         notice={library.notice}
         clearStorage={() => void library.clearStorage()}
         downloadSaves={(game) => void library.downloadSaves(game)}
@@ -212,6 +277,7 @@ export default function App() {
         frameWrapRef={player.frameWrapRef}
         gameAspectRatio={player.gameAspectRatio}
         logsOpen={logsOpen}
+        overlayAvailable={overlayAvailable}
         onIframeLoad={handleIframeLoad}
         onRequestFullscreen={() => void handleReservedAction("fullscreen")}
         onToggleOverlay={(game) => void setGameSettingsAndFocus(game, overlayTogglePatch(game))}

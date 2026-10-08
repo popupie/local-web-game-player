@@ -20,7 +20,7 @@
       window.parent.postMessage(message, "*");
     }
   }
-  function createParentBridge({ overlay, postParentMessage, settings, viewport }) {
+  function createParentBridge({ gameId, overlay, postParentMessage, settings, viewport }) {
     function installReservedKeys() {
       window.addEventListener("keydown", handleReservedKeyEvent, true);
     }
@@ -90,6 +90,7 @@
       });
     }
     function postStatus() {
+      postParentMessage({ type: "overlay-availability", gameId, available: true });
       postParentMessage({ type: "overlay-status", overlayEnabled: settings.overlayEnabled, readerMode: settings.readerMode });
     }
     return {
@@ -3137,6 +3138,7 @@
       scheduleFlush: overlay.scheduleFlush
     });
     const parent = createParentBridge({
+      gameId: config.gameId,
       overlay,
       postParentMessage,
       settings,

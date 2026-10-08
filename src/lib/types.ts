@@ -66,18 +66,26 @@ export interface ImportProgress {
 
 export type PlayerToParentMessage =
   | { type: "reserved-key"; action: ReservedKeyAction; code: string }
+  | { type: "overlay-availability"; gameId: string; available: boolean }
   | { type: "overlay-status"; overlayEnabled: boolean; readerMode: boolean }
   | { type: "game-viewport"; width: number; height: number }
   | { type: "return-focus" }
   | { type: "text-log"; gameId: string; text: string; at: number }
-  | { type: "runtime-error"; message: string; stack?: string };
+  | { type: "runtime-error"; message: string; stack?: string }
+  | { type: "wolf-assets-request"; gameId: string; requestId: string };
 
 export type ParentToPlayerMessage =
   | { type: "player-settings"; settings: PlayerSettings }
   | { type: "overlay-visible"; enabled: boolean }
   | { type: "reader-mode"; enabled: boolean }
   | { type: "focus-game" }
-  | { type: "player-viewport"; width: number; height: number; devicePixelRatio: number };
+  | { type: "player-viewport"; width: number; height: number; devicePixelRatio: number }
+  | {
+      type: "wolf-assets-response";
+      requestId: string;
+      assets?: Array<{ path: string; url: string; size: number }>;
+      error?: string;
+    };
 
 export interface ImportCandidate {
   title: string;

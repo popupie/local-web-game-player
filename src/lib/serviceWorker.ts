@@ -1,6 +1,8 @@
 const PLAYER_SERVICE_WORKER_VERSION = "player-sw-11";
 
-export async function registerPlayerServiceWorker(): Promise<ServiceWorkerRegistration | undefined> {
+export async function registerPlayerServiceWorker(): Promise<
+  ServiceWorkerRegistration | undefined
+> {
   if (!("serviceWorker" in navigator)) return undefined;
 
   const registration = await navigator.serviceWorker.register(

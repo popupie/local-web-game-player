@@ -73,4 +73,5 @@ async function buildRuntimeBridge() {
 await mkdir(outdir, { recursive: true });
 await buildRuntime("buffer");
 await buildRuntime("desktop");
+await buildRuntime("wolf");
 await buildRuntimeBridge();

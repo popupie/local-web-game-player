@@ -95,6 +95,20 @@ function gameTitleFromSystemJson(text: string): string {
   }
 }
 
+function isBrowserGameManifestPath(path: string): boolean {
+  const normalized = normalizeStoredPath(path).toLowerCase();
+  return normalized === "browser-game.json" || normalized.endsWith("/browser-game.json");
+}
+
+function gameTitleFromBrowserGameJson(text: string): string {
+  try {
+    const data = JSON.parse(text) as { title?: unknown };
+    return typeof data.title === "string" ? data.title.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
 function gameTitleFromHtml(text: string): string {
   const match = /<title[^>]*>([\s\S]*?)<\/title>/iu.exec(text);
   return match?.[1]
@@ -117,6 +131,18 @@ async function titleFromSystemJsonEntries<T extends { path: string }>(
     if (title) return title;
   }
 
+  return "";
+}
+
+async function titleFromBrowserGameEntries<T extends { path: string }>(
+  entries: T[],
+  readText: (entry: T) => Promise<string>,
+): Promise<string> {
+  for (const entry of entries) {
+    if (!isBrowserGameManifestPath(entry.path)) continue;
+    const title = gameTitleFromBrowserGameJson(await readText(entry));
+    if (title) return title;
+  }
   return "";
 }
 
@@ -231,10 +257,11 @@ export async function candidateFromFolder(
     mime: detectMime(entry.path),
   }));
   const systemTitle = await titleFromSystemJsonEntries(normalized, (entry) => entry.file.text());
+  const browserGameTitle = await titleFromBrowserGameEntries(normalized, (entry) => entry.file.text());
   const htmlTitle = await titleFromHtmlEntries(normalized, (entry) => entry.file.text());
 
   return {
-    title: candidateTitle(systemTitle || htmlTitle, entries.map((entry) => entry.path), fallbackTitle),
+    title: candidateTitle(systemTitle || browserGameTitle || htmlTitle, paths, fallbackTitle),
     files: sessionFiles,
     entryPath: findEntryPath(paths),
     totalBytes: sessionFiles.reduce((sum, entry) => sum + entry.size, 0)
@@ -293,6 +320,7 @@ export async function candidateFromDirectoryHandle(
 
   const entries: LocalFolderCandidate["files"] = [];
   let systemTitle = "";
+  let browserGameTitle = "";
   for (let index = 0; index < fileEntries.length; index += 1) {
     const entry = fileEntries[index];
     const file = await entry.handle.getFile();
@@ -304,6 +332,9 @@ export async function candidateFromDirectoryHandle(
     });
     if (!systemTitle && Number.isFinite(systemJsonPathRank(entry.path))) {
       systemTitle = gameTitleFromSystemJson(await file.text());
+    }
+    if (!browserGameTitle && isBrowserGameManifestPath(entry.path)) {
+      browserGameTitle = gameTitleFromBrowserGameJson(await file.text());
     }
 
     if (shouldReportProgress(index + 1, fileEntries.length, lastReportTime)) {
@@ -318,7 +349,11 @@ export async function candidateFromDirectoryHandle(
   const htmlTitle = await titleFromHtmlEntries(fileEntries, async (entry) => (await entry.handle.getFile()).text());
 
   return {
-    title: candidateTitle(systemTitle || htmlTitle, entries.map((entry) => entry.path), directoryHandle.name ?? FALLBACK_GAME_TITLE),
+    title: candidateTitle(
+      systemTitle || browserGameTitle || htmlTitle,
+      paths,
+      directoryHandle.name ?? FALLBACK_GAME_TITLE,
+    ),
     files: normalized,
     entryPath: findEntryPath(paths),
     totalBytes,
@@ -330,10 +365,11 @@ export async function candidateFromZip(file: File, onProgress?: ProgressCallback
   const normalized = await unpackArchiveFiles(file, "ZIP", onProgress);
   const paths = normalized.map((entry) => entry.path);
   const systemTitle = await titleFromSystemJsonEntries(normalized, (entry) => entry.file.text());
+  const browserGameTitle = await titleFromBrowserGameEntries(normalized, (entry) => entry.file.text());
   const htmlTitle = await titleFromHtmlEntries(normalized, (entry) => entry.file.text());
 
   return {
-    title: candidateTitle(systemTitle || htmlTitle, paths, file.name),
+    title: candidateTitle(systemTitle || browserGameTitle || htmlTitle, paths, file.name),
     files: normalized,
     entryPath: findEntryPath(paths),
     totalBytes: normalized.reduce((sum, entry) => sum + entry.file.size, 0)
