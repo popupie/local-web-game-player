@@ -26,6 +26,7 @@ type WolfRuntimeModule = {
 import { normalizeWolfPath, wolfPathKeys } from "@/player-runtime/engines/wolf/path";
 import { installWolfCompatibility } from "@/player-runtime/engines/wolf/compatibility";
 import type { WolfPlayerSettings } from "@/player-runtime/engines/wolf/compatibility";
+import { trackIndexedDbDatabases } from "@/shared/indexedDbSaveTracking";
 
 declare const Module: WolfRuntimeModule;
 declare const FS: {
@@ -42,6 +43,10 @@ const config = (window as typeof window & {
 }).__WOLF_PLAYER_CONFIG__;
 const runtimeModule = (window as typeof window & { Module?: WolfRuntimeModule }).Module ?? Module;
 let activeModule: WolfRuntimeModule | undefined;
+
+if (config?.gameId) {
+  trackIndexedDbDatabases(`mz-player:${config.gameId}:`);
+}
 
 function showStatus(message: string) {
   const target = document.querySelector<HTMLElement>("#touchtostart");

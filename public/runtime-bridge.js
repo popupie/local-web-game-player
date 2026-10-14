@@ -3358,6 +3358,66 @@
     }, ENCRYPTION_FALLBACK_INSTALL_INTERVAL_MS);
   }
 
+  // shared/indexedDbSaveTracking.ts
+  var INDEXED_DB_MARKER_PREFIX = "__mz_player_indexeddb:";
+  function trackedIndexedDbMarkerPrefix(namespace) {
+    return `${INDEXED_DB_MARKER_PREFIX}${encodeURIComponent(namespace)}:`;
+  }
+  function trackedIndexedDbMarkerKey(namespace, databaseName) {
+    return `${trackedIndexedDbMarkerPrefix(namespace)}${encodeURIComponent(databaseName)}`;
+  }
+  function trackIndexedDbDatabases(namespace) {
+    const factory = window.indexedDB;
+    if (!factory) return;
+    const trackedFactory = factory;
+    if (trackedFactory.__mzPlayerDatabaseTrackingNamespace === namespace) return;
+    const rawSetItem = Storage.prototype.setItem;
+    const rawRemoveItem = Storage.prototype.removeItem;
+    const originalOpen = factory.open.bind(factory);
+    const originalDeleteDatabase = factory.deleteDatabase.bind(factory);
+    const markerKey = (name) => trackedIndexedDbMarkerKey(namespace, name);
+    const markDatabase = (name) => {
+      try {
+        rawSetItem.call(window.localStorage, markerKey(name), "1");
+      } catch {
+      }
+    };
+    const unmarkDatabase = (name) => {
+      try {
+        rawRemoveItem.call(window.localStorage, markerKey(name));
+      } catch {
+      }
+    };
+    try {
+      Object.defineProperties(factory, {
+        __mzPlayerDatabaseTrackingNamespace: {
+          configurable: true,
+          value: namespace
+        },
+        open: {
+          configurable: true,
+          value(name, version) {
+            const databaseName = String(name);
+            markDatabase(databaseName);
+            return version === void 0 ? originalOpen(databaseName) : originalOpen(databaseName, version);
+          }
+        },
+        deleteDatabase: {
+          configurable: true,
+          value(name) {
+            const databaseName = String(name);
+            const request = originalDeleteDatabase(databaseName);
+            request.addEventListener("success", () => {
+              unmarkDatabase(databaseName);
+            });
+            return request;
+          }
+        }
+      });
+    } catch {
+    }
+  }
+
   // player-runtime/bridge/index.ts
   (() => {
     const config = window.__MZ_PLAYER_BRIDGE__;
@@ -3366,6 +3426,7 @@
     const settings = createSettingsStore(config.settings);
     const postParentMessage = postParent;
     const prefix = `mz-player:${config.gameId}:`;
+    trackIndexedDbDatabases(prefix);
     patchLocalStorage(prefix);
     const overlay = createTextOverlayBridge({
       config,

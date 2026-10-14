@@ -6,6 +6,7 @@ import { patchLocalStorage } from "@/player-runtime/bridge/storageNamespace";
 import { createTextOverlayBridge } from "@/player-runtime/bridge/overlay";
 import { createViewportBridge } from "@/player-runtime/bridge/viewport";
 import { installRpgMakerEncryptionFallback } from "@/player-runtime/engines/rpgmaker_mvmz/encryption";
+import { trackIndexedDbDatabases } from "@/shared/indexedDbSaveTracking";
 
 (() => {
   const config = window.__MZ_PLAYER_BRIDGE__;
@@ -16,6 +17,7 @@ import { installRpgMakerEncryptionFallback } from "@/player-runtime/engines/rpgm
   const postParentMessage = postParent;
   const prefix = `mz-player:${config.gameId}:`;
 
+  trackIndexedDbDatabases(prefix);
   patchLocalStorage(prefix);
 
   const overlay = createTextOverlayBridge({
