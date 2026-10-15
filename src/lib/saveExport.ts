@@ -17,22 +17,73 @@ import type { GameRecord } from "@/src/lib/types";
 export interface SaveExportEntry {
   path: string;
   data: string | Uint8Array;
+  target?: SaveExportTarget;
 }
 
 export interface IndexedDbRecord {
+  autoIncrement?: boolean;
   database: string;
+  indexes?: Array<{
+    name: string;
+    keyPath: string | string[];
+    multiEntry: boolean;
+    unique: boolean;
+  }>;
   store: string;
   key: IDBValidKey;
+  keyPath?: string | string[] | null;
   value: unknown;
 }
 
-type GameEngine =
+export type GameEngine =
   | "rpg-maker"
   | "wolf"
   | "tyrano"
   | "construct-2"
   | "cocos"
   | "unknown";
+
+export type SerializedIndexedDbKey =
+  | { type: "string"; value: string }
+  | { type: "number"; value: number }
+  | { type: "date"; value: string }
+  | { type: "binary"; value: string }
+  | { type: "array"; value: SerializedIndexedDbKey[] };
+
+export type SaveExportTarget =
+  | { kind: "local-storage"; key: string }
+  | { kind: "vfs"; path: string }
+  | {
+      kind: "indexeddb";
+      database: string;
+      store: string;
+      key: SerializedIndexedDbKey;
+      autoIncrement?: boolean;
+      indexes?: Array<{
+        name: string;
+        keyPath: string | string[];
+        multiEntry: boolean;
+        unique: boolean;
+      }>;
+      keyPath?: string | string[] | null;
+      valueType?: string;
+      mimeType?: string;
+    };
+
+export interface SaveArchiveManifest {
+  format: "mz-browser-player-save-backup";
+  version: 1;
+  engine: GameEngine;
+  entries: Array<{
+    path: string;
+    dataType: "text" | "binary";
+    target?: SaveExportTarget;
+  }>;
+}
+
+export const SAVE_ARCHIVE_MANIFEST_PATH = ".mz-player/backup.json";
+export const LEGACY_SAVE_ARCHIVE_MANIFEST_PATH =
+  "__mz_player_save_manifest.json";
 
 type StorageReader = Pick<Storage, "getItem" | "key" | "length">;
 type DatabaseInfoFactory = IDBFactory & {
@@ -54,6 +105,20 @@ function bytesToBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(offset, offset + 32768));
   }
   return btoa(binary);
+}
+
+function serializeIndexedDbKey(key: IDBValidKey): SerializedIndexedDbKey {
+  if (typeof key === "string") return { type: "string", value: key };
+  if (typeof key === "number") return { type: "number", value: key };
+  if (key instanceof Date) return { type: "date", value: key.toISOString() };
+  if (Array.isArray(key)) {
+    return { type: "array", value: key.map(serializeIndexedDbKey) };
+  }
+  const bytes =
+    key instanceof ArrayBuffer
+      ? new Uint8Array(key)
+      : new Uint8Array(key.buffer, key.byteOffset, key.byteLength);
+  return { type: "binary", value: bytesToBase64(bytes) };
 }
 
 function decodeVirtualFileValue(value: string): string | Uint8Array {
@@ -143,6 +208,12 @@ export function collectSaveExportEntries(
     entries.set(path, {
       path,
       data: exportDataForStorageValue(key, value),
+      target: key.startsWith(VFS_FILE_PREFIX)
+        ? {
+            kind: "vfs",
+            path: normalizeStoredPath(key.slice(VFS_FILE_PREFIX.length)),
+          }
+        : { kind: "local-storage", key },
     });
   }
 
@@ -171,7 +242,7 @@ function trackedIndexedDbNames(
   return names;
 }
 
-async function detectGameEngine(gameId: string): Promise<GameEngine> {
+export async function detectGameEngine(gameId: string): Promise<GameEngine> {
   const paths = (await getStoredFilesForGame(gameId)).map((record) =>
     normalizeStoredPath(record.path).toLowerCase(),
   );
@@ -223,7 +294,7 @@ async function availableIndexedDbNames(
   }
 }
 
-async function indexedDbNamesForGame(
+export async function indexedDbNamesForGame(
   gameId: string,
   engine: GameEngine,
   storage: StorageReader,
@@ -288,12 +359,29 @@ function readObjectStore(
   return new Promise((resolve, reject) => {
     const records: IndexedDbRecord[] = [];
     const transaction = db.transaction(store, "readonly");
-    const request = transaction.objectStore(store).openCursor();
+    const objectStore = transaction.objectStore(store);
+    const request = objectStore.openCursor();
 
     request.onsuccess = () => {
       const cursor = request.result;
       if (!cursor) return;
-      records.push({ database, store, key: cursor.key, value: cursor.value });
+      records.push({
+        autoIncrement: objectStore.autoIncrement,
+        database,
+        indexes: Array.from(objectStore.indexNames, (name) => {
+          const index = objectStore.index(name);
+          return {
+            name,
+            keyPath: index.keyPath,
+            multiEntry: index.multiEntry,
+            unique: index.unique,
+          };
+        }),
+        store,
+        key: cursor.key,
+        keyPath: objectStore.keyPath,
+        value: cursor.value,
+      });
       cursor.continue();
     };
     request.onerror = () =>
@@ -418,13 +506,35 @@ async function genericIndexedDbData(
 export async function exportIndexedDbRecord(
   record: IndexedDbRecord,
 ): Promise<SaveExportEntry | undefined> {
+  const bytes = bytesFromValue(record.value);
+  const target: SaveExportTarget = {
+    kind: "indexeddb",
+    database: record.database,
+    store: record.store,
+    key: serializeIndexedDbKey(record.key),
+    autoIncrement: record.autoIncrement,
+    indexes: record.indexes,
+    keyPath: record.keyPath,
+    valueType:
+      record.value instanceof Blob
+        ? "Blob"
+        : record.value instanceof ArrayBuffer
+          ? "ArrayBuffer"
+          : bytes
+            ? record.value?.constructor?.name ?? "Uint8Array"
+            : typeof record.value === "string"
+              ? "String"
+              : "Json",
+    mimeType: record.value instanceof Blob ? record.value.type : undefined,
+  };
+
   if (record.database.endsWith("-Save") && record.store === "FILE_DATA") {
     const contents =
       typeof record.value === "object" && record.value !== null
         ? bytesFromValue((record.value as { contents?: unknown }).contents)
         : undefined;
     const path = wolfSavePath(record.key);
-    return contents && path ? { path, data: contents } : undefined;
+    return contents && path ? { path, data: contents, target } : undefined;
   }
 
   if (record.database === "_C2SaveStates" && record.store === "saves") {
@@ -434,7 +544,7 @@ export async function exportIndexedDbRecord(
       typeof save?.data === "string"
         ? save.data
         : structuredJson(save?.data ?? record.value);
-    return { path: `save/${safePathSegment(slot)}.json`, data };
+    return { path: `save/${safePathSegment(slot)}.json`, data, target };
   }
 
   if (
@@ -445,7 +555,7 @@ export async function exportIndexedDbRecord(
     const path = savePathForRpgKey(record.key);
     if (path) {
       const payload = await genericIndexedDbData(record.value);
-      return { path, data: payload.data };
+      return { path, data: payload.data, target };
     }
   }
 
@@ -456,7 +566,7 @@ export async function exportIndexedDbRecord(
     safePathSegment(record.store),
     `${safePathSegment(indexedDbKeyLabel(record.key))}.${payload.extension}`,
   ].join("/");
-  return { path, data: payload.data };
+  return { path, data: payload.data, target };
 }
 
 async function collectIndexedDbSaveEntries(
@@ -513,6 +623,31 @@ export async function downloadSaveZip(game: GameRecord): Promise<void> {
   const zip = new JSZip();
   for (const entry of entries.values()) {
     zip.file(entry.path, entry.data);
+  }
+
+  let engine: GameEngine = "unknown";
+  try {
+    engine = await detectGameEngine(game.id);
+  } catch {
+    // The entry targets are sufficient when game metadata is temporarily unavailable.
+  }
+  const metadataEntries = Array.from(entries.values()).filter(
+    (entry) =>
+      entry.path.startsWith("indexedDB/") &&
+      entry.target?.kind === "indexeddb",
+  );
+  if (metadataEntries.length > 0) {
+    const manifest: SaveArchiveManifest = {
+      format: "mz-browser-player-save-backup",
+      version: 1,
+      engine,
+      entries: metadataEntries.map((entry) => ({
+        path: entry.path,
+        dataType: typeof entry.data === "string" ? "text" : "binary",
+        target: entry.target,
+      })),
+    };
+    zip.file(SAVE_ARCHIVE_MANIFEST_PATH, JSON.stringify(manifest, null, 2));
   }
 
   const blob = await zip.generateAsync({ type: "blob" });

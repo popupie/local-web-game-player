@@ -1,4 +1,11 @@
-import { type FocusEvent, useEffect, useId, useRef, useState } from "react";
+import {
+  type ChangeEvent,
+  type FocusEvent,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { formatBytes } from "@/src/lib/format";
 import type { GameRecord } from "@/src/lib/types";
@@ -10,6 +17,7 @@ interface GameCardProps {
   game: GameRecord;
   onDelete: (game: GameRecord) => void;
   onDownloadSaves: (game: GameRecord) => void;
+  onImportSaves: (game: GameRecord, files: File[]) => void;
   onBindSessionFolder: (game: GameRecord) => void;
   onSelect: (gameId: string) => void;
 }
@@ -40,16 +48,21 @@ export function GameCard({
   onBindSessionFolder,
   onDelete,
   onDownloadSaves,
+  onImportSaves,
   onSelect,
 }: GameCardProps) {
   const actionMenuId = useId();
   const actionsRef = useRef<HTMLDivElement>(null);
   const actionsToggleRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const saveFolderInputRef = useRef<HTMLInputElement>(null);
+  const saveFileInputRef = useRef<HTMLInputElement>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [fileImportVisible, setFileImportVisible] = useState(false);
+  const [importSubmenuLeft, setImportSubmenuLeft] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 });
   const canBindSession = game.sourceKind === "session-folder";
   const unboundSession = canBindSession && !boundSession;
@@ -75,7 +88,7 @@ export function GameCard({
     const gap = 8;
     const margin = 8;
     const menuWidth = 148;
-    const menuHeight = 70;
+    const menuHeight = 102;
     const preferredLeft = rect.right + gap;
     const left =
       preferredLeft + menuWidth <= window.innerWidth - margin
@@ -87,6 +100,9 @@ export function GameCard({
     );
 
     setMenuPosition({ left, top });
+    setImportSubmenuLeft(
+      left + menuWidth * 2 + gap > window.innerWidth - margin,
+    );
   };
   const clearCloseTimer = () => {
     if (closeTimerRef.current === undefined) return;
@@ -113,10 +129,21 @@ export function GameCard({
     }
     setActionsOpen(false);
   };
+  const handleSaveFolder = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (files.length > 0) onImportSaves(game, files);
+  };
+  const handleSaveFile = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) onImportSaves(game, [file]);
+  };
 
   useEffect(() => {
     if (!actionsOpen) return;
 
+    positionMenu();
     const repositionMenu = () => positionMenu();
     window.addEventListener("resize", repositionMenu);
     window.addEventListener("scroll", repositionMenu, true);
@@ -124,6 +151,10 @@ export function GameCard({
       window.removeEventListener("resize", repositionMenu);
       window.removeEventListener("scroll", repositionMenu, true);
     };
+  }, [actionsOpen]);
+
+  useEffect(() => {
+    if (!actionsOpen) setFileImportVisible(false);
   }, [actionsOpen]);
 
   useEffect(
@@ -185,6 +216,45 @@ export function GameCard({
                 <span>Download saves</span>
               </button>
 
+              <div
+                className="game-import-action"
+                onMouseEnter={() => setFileImportVisible(true)}
+                onMouseLeave={() => setFileImportVisible(false)}
+              >
+                <button
+                  type="button"
+                  className="game-action-button has-submenu"
+                  aria-haspopup="menu"
+                  onClick={() => {
+                    setActionsOpen(false);
+                    saveFolderInputRef.current?.click();
+                  }}
+                  onFocus={() => setFileImportVisible(true)}
+                >
+                  <Icon name="upload" />
+                  <span>Import save</span>
+                </button>
+                {fileImportVisible && (
+                  <div
+                    className={`game-import-submenu${
+                      importSubmenuLeft ? " open-left" : ""
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      className="game-action-button"
+                      onClick={() => {
+                        setActionsOpen(false);
+                        saveFileInputRef.current?.click();
+                      }}
+                    >
+                      <Icon name="archive" />
+                      <span>File or ZIP</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <button
                 type="button"
                 className="game-action-button danger"
@@ -200,6 +270,23 @@ export function GameCard({
             document.body,
           )}
       </div>
+
+      <input
+        ref={saveFolderInputRef}
+        className="hidden-input"
+        type="file"
+        multiple
+        aria-label={`Import save folder for ${game.title}`}
+        onChange={handleSaveFolder}
+        {...{ webkitdirectory: "" }}
+      />
+      <input
+        ref={saveFileInputRef}
+        className="hidden-input"
+        type="file"
+        aria-label={`Import a save file or ZIP for ${game.title}`}
+        onChange={handleSaveFile}
+      />
     </article>
   );
 }

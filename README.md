@@ -48,7 +48,8 @@ on an API that the browser player does not emulate.
 10. Use Overlay to collect game text in a readable text log.
 11. Use Show to make overlay text visible on top of the game.
 12. Use Guard to stop chosen keys from going into the game.
-13. Download saves from the library when you want to export save data.
+13. Download a save ZIP, or import a save folder, individual file, or ZIP, from
+    a game's options menu.
 
 ## Web Export Examples
 

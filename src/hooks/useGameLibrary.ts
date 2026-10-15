@@ -28,6 +28,7 @@ import {
   listenForSessionFileRequests,
 } from "@/src/lib/playerCache";
 import { downloadSaveZip } from "@/src/lib/saveExport";
+import { importSaveFile, importSaveFolder } from "@/src/lib/saveImport";
 import { registerPlayerServiceWorker } from "@/src/lib/serviceWorker";
 import {
   clearAllSessionFolders,
@@ -47,7 +48,11 @@ import {
   estimateStorageAfterMutation,
   importErrorMessage,
 } from "@/src/lib/storageQuota";
-import type { GameRecord, ImportCandidate, ImportProgress } from "@/src/lib/types";
+import type {
+  GameRecord,
+  ImportCandidate,
+  ImportProgress,
+} from "@/src/lib/types";
 
 const idleProgress: ImportProgress = {
   phase: "idle",
@@ -166,7 +171,10 @@ export function useGameLibrary(onImportStart?: () => void) {
         total: 1,
       });
       await waitForNextPaint();
-      const candidate = await candidateFromFolder(files, selectedFolderName(input, files));
+      const candidate = await candidateFromFolder(
+        files,
+        selectedFolderName(input, files),
+      );
       const game = await importSessionFolderCandidate(candidate, setProgress);
       registerSessionFolder(game.id, candidate.files);
       clearServiceWorkerGameCache(game.id);
@@ -326,7 +334,9 @@ export function useGameLibrary(onImportStart?: () => void) {
       setStorage(await estimateStorageAfterMutation(previousStorage));
       setNotice("Storage cleared.");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Storage clear failed.");
+      setError(
+        cause instanceof Error ? cause.message : "Storage clear failed.",
+      );
     }
   }
 
@@ -383,6 +393,48 @@ export function useGameLibrary(onImportStart?: () => void) {
     }
   }
 
+  async function importSaves(game: GameRecord, files: File[]) {
+    setError(null);
+    setNotice(null);
+    try {
+      const isFolder =
+        files.length > 1 ||
+        files.some((file) =>
+          Boolean(
+            (file as File & { webkitRelativePath?: string }).webkitRelativePath,
+          ),
+        );
+      const importOptions = {
+        beforeCommit: async () => {
+          if (activeGameId !== game.id) return;
+          setActiveGameId(null);
+          await waitForNextPaint();
+        },
+        confirmOverwrite: (collisionCount: number) =>
+          window.confirm(
+            `${collisionCount} existing save ${
+              collisionCount === 1 ? "entry" : "entries"
+            } for ${game.title} will be overwritten. Continue?`,
+          ),
+      };
+      const result = isFolder
+        ? await importSaveFolder(game, files, importOptions)
+        : await importSaveFile(game, files[0], importOptions);
+      if (result.cancelled) {
+        setNotice("Save import cancelled.");
+        return;
+      }
+      clearServiceWorkerGameCache(game.id);
+      setStorage(await estimateStorage());
+      const label = result.importedEntries === 1 ? "save file" : "save files";
+      setNotice(
+        `Imported ${result.importedEntries} ${label} into ${game.title}.`,
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Save import failed.");
+    }
+  }
+
   async function saveGameSettings(
     game: GameRecord,
     patch: Partial<GameRecord["settings"]>,
@@ -413,6 +465,7 @@ export function useGameLibrary(onImportStart?: () => void) {
     openLocalFolder,
     progress,
     downloadSaves,
+    importSaves,
     removeGame,
     clearStorage,
     bindSessionFolder,

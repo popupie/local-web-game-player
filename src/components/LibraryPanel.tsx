@@ -21,6 +21,7 @@ interface LibraryPanelProps {
   notice: string | null;
   clearStorage: () => void;
   downloadSaves: (game: GameRecord) => void;
+  importSaves: (game: GameRecord, files: File[]) => void;
   openFolder: () => void;
   importFolder: (event: ChangeEvent<HTMLInputElement>) => void;
   importZip: (event: ChangeEvent<HTMLInputElement>) => void;
@@ -52,6 +53,7 @@ export function LibraryPanel({
   notice,
   clearStorage,
   downloadSaves,
+  importSaves,
   openFolder,
   importFolder,
   importZip,
@@ -173,6 +175,7 @@ export function LibraryPanel({
             game={game}
             onDelete={removeGame}
             onDownloadSaves={downloadSaves}
+            onImportSaves={importSaves}
             onBindSessionFolder={bindSessionFolder}
             onSelect={setActiveGameId}
           />
