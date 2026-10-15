@@ -17,6 +17,7 @@ import {
 } from "@/shared/virtualFileSystem";
 import {
   INDEXED_DB_MARKER_PREFIX,
+  trackedIndexedDbPhysicalName,
   trackedIndexedDbMarkerKey,
 } from "@/shared/indexedDbSaveTracking";
 import { storageNamespace } from "@/src/lib/keys";
@@ -754,8 +755,10 @@ function indexedDbKeyExists(
 }
 
 async function indexedDbCollisionCount(
+  gameId: string,
   writes: IndexedDbWrite[],
   factory: IDBFactory,
+  storage: Pick<Storage, "getItem">,
 ): Promise<number> {
   const writesByDatabase = new Map<string, IndexedDbWrite[]>();
   for (const write of writes) {
@@ -766,7 +769,12 @@ async function indexedDbCollisionCount(
 
   let count = 0;
   for (const [databaseName, databaseWrites] of writesByDatabase) {
-    const database = await openExistingDatabase(factory, databaseName);
+    const physicalName = trackedIndexedDbPhysicalName(
+      storageNamespace(gameId),
+      databaseName,
+      storage,
+    );
+    const database = await openExistingDatabase(factory, physicalName);
     if (!database) continue;
     try {
       for (const write of databaseWrites) {
@@ -821,7 +829,12 @@ async function commitIndexedDbWrites(
         ]),
       ).values(),
     );
-    const db = await openWritableDatabase(factory, databaseName, specs);
+    const physicalName = trackedIndexedDbPhysicalName(
+      storageNamespace(gameId),
+      databaseName,
+      storage,
+    );
+    const db = await openWritableDatabase(factory, physicalName, specs);
     try {
       const transaction = db.transaction(
         specs.map((spec) => spec.name),
@@ -838,7 +851,7 @@ async function commitIndexedDbWrites(
     }
     storage.setItem(
       trackedIndexedDbMarkerKey(storageNamespace(gameId), databaseName),
-      "1",
+      physicalName,
     );
   }
 }
@@ -1102,7 +1115,12 @@ async function importLoadedSaves(
   );
   const collisionCount =
     bufferedStorage.collisionCount(game.id) +
-    (await indexedDbCollisionCount(indexedDbWrites, factory));
+    (await indexedDbCollisionCount(
+      game.id,
+      indexedDbWrites,
+      factory,
+      storage,
+    ));
   if (
     collisionCount > 0 &&
     options.confirmOverwrite &&

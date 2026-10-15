@@ -1,6 +1,9 @@
 import JSZip from "jszip";
 import {
+  INDEXED_DB_SCOPE_PREFIX,
   INDEXED_DB_MARKER_PREFIX,
+  scopedIndexedDbName,
+  trackedIndexedDbPhysicalName,
   trackedIndexedDbMarkerPrefix,
 } from "@/shared/indexedDbSaveTracking";
 import {
@@ -305,7 +308,13 @@ export async function indexedDbNamesForGame(
 
   if (engine === "wolf") {
     for (const name of available) {
-      if (name.includes(gameId) && name.endsWith("-Save")) names.add(name);
+      if (
+        !name.startsWith(INDEXED_DB_SCOPE_PREFIX) &&
+        name.includes(gameId) &&
+        name.endsWith("-Save")
+      ) {
+        names.add(name);
+      }
     }
     return Array.from(names)
       .filter((name) => name.endsWith("-Save"))
@@ -313,19 +322,43 @@ export async function indexedDbNamesForGame(
   }
 
   if (engine === "construct-2") {
-    for (const name of ["_C2SaveStates", "localforage"]) {
-      if (available.size === 0 || available.has(name)) names.add(name);
+    if (
+      available.size === 0 ||
+      available.has("_C2SaveStates") ||
+      available.has(
+        scopedIndexedDbName(storageNamespace(gameId), "_C2SaveStates"),
+      )
+    ) {
+      names.add("_C2SaveStates");
     }
+    return Array.from(names)
+      .filter((name) => name === "_C2SaveStates")
+      .sort();
   }
 
-  if (
-    engine === "rpg-maker" &&
-    (available.size === 0 || available.has("localforage"))
-  ) {
-    names.add("localforage");
+  if (engine === "rpg-maker") {
+    if (
+      available.size === 0 ||
+      available.has("localforage") ||
+      available.has(
+        scopedIndexedDbName(storageNamespace(gameId), "localforage"),
+      )
+    ) {
+      names.add("localforage");
+    }
+    return Array.from(names)
+      .filter((name) => name === "localforage")
+      .sort();
   }
 
-  return Array.from(names).sort();
+  return Array.from(names)
+    .filter(
+      (name) =>
+        name !== "localforage" &&
+        name !== "_C2SaveStates" &&
+        !name.endsWith("-Save"),
+    )
+    .sort();
 }
 
 function openExistingDatabase(
@@ -397,15 +430,22 @@ function readObjectStore(
 
 async function readIndexedDbRecords(
   factory: IDBFactory,
-  name: string,
+  gameId: string,
+  storage: Pick<Storage, "getItem">,
+  logicalName: string,
 ): Promise<IndexedDbRecord[]> {
-  const db = await openExistingDatabase(factory, name);
+  const physicalName = trackedIndexedDbPhysicalName(
+    storageNamespace(gameId),
+    logicalName,
+    storage,
+  );
+  const db = await openExistingDatabase(factory, physicalName);
   if (!db) return [];
 
   try {
     const stores = Array.from(db.objectStoreNames);
     const records = await Promise.all(
-      stores.map((store) => readObjectStore(name, db, store)),
+      stores.map((store) => readObjectStore(logicalName, db, store)),
     );
     return records.flat();
   } finally {
@@ -486,6 +526,31 @@ function wolfSavePath(key: IDBValidKey): string | undefined {
   const saveRoot = normalized.indexOf("-Save/");
   if (saveRoot < 0) return undefined;
   return normalizeStoredPath(normalized.slice(saveRoot + "-Save/".length));
+}
+
+export function isIndexedDbSaveRecord(
+  engine: GameEngine,
+  record: IndexedDbRecord,
+): boolean {
+  if (record.database === "localforage") {
+    return (
+      engine === "rpg-maker" &&
+      record.store === "keyvaluepairs" &&
+      typeof record.key === "string" &&
+      Boolean(savePathForRpgKey(record.key))
+    );
+  }
+  if (record.database === "_C2SaveStates") {
+    return engine === "construct-2" && record.store === "saves";
+  }
+  if (record.database.endsWith("-Save")) {
+    return (
+      engine === "wolf" &&
+      record.store === "FILE_DATA" &&
+      Boolean(wolfSavePath(record.key))
+    );
+  }
+  return !["rpg-maker", "wolf", "construct-2"].includes(engine);
 }
 
 async function genericIndexedDbData(
@@ -587,14 +652,18 @@ async function collectIndexedDbSaveEntries(
     await Promise.all(
       names.map(async (name) => {
         try {
-          return await readIndexedDbRecords(factory, name);
+          return await readIndexedDbRecords(factory, gameId, storage, name);
         } catch {
           return [];
         }
       }),
     )
   ).flat();
-  const entries = await Promise.all(records.map(exportIndexedDbRecord));
+  const entries = await Promise.all(
+    records
+      .filter((record) => isIndexedDbSaveRecord(engine, record))
+      .map(exportIndexedDbRecord),
+  );
   return entries.filter((entry): entry is SaveExportEntry => Boolean(entry));
 }
 

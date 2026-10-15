@@ -61,7 +61,7 @@ export function GameCard({
     undefined,
   );
   const [actionsOpen, setActionsOpen] = useState(false);
-  const [fileImportVisible, setFileImportVisible] = useState(false);
+  const [importChoicesVisible, setImportChoicesVisible] = useState(false);
   const [importSubmenuLeft, setImportSubmenuLeft] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 });
   const canBindSession = game.sourceKind === "session-folder";
@@ -154,7 +154,7 @@ export function GameCard({
   }, [actionsOpen]);
 
   useEffect(() => {
-    if (!actionsOpen) setFileImportVisible(false);
+    if (!actionsOpen) setImportChoicesVisible(false);
   }, [actionsOpen]);
 
   useEffect(
@@ -218,23 +218,21 @@ export function GameCard({
 
               <div
                 className="game-import-action"
-                onMouseEnter={() => setFileImportVisible(true)}
-                onMouseLeave={() => setFileImportVisible(false)}
+                onMouseEnter={() => setImportChoicesVisible(true)}
+                onMouseLeave={() => setImportChoicesVisible(false)}
               >
                 <button
                   type="button"
                   className="game-action-button has-submenu"
                   aria-haspopup="menu"
-                  onClick={() => {
-                    setActionsOpen(false);
-                    saveFolderInputRef.current?.click();
-                  }}
-                  onFocus={() => setFileImportVisible(true)}
+                  aria-expanded={importChoicesVisible}
+                  onClick={() => setImportChoicesVisible(true)}
+                  onFocus={() => setImportChoicesVisible(true)}
                 >
                   <Icon name="upload" />
                   <span>Import save</span>
                 </button>
-                {fileImportVisible && (
+                {importChoicesVisible && (
                   <div
                     className={`game-import-submenu${
                       importSubmenuLeft ? " open-left" : ""
@@ -250,6 +248,17 @@ export function GameCard({
                     >
                       <Icon name="archive" />
                       <span>File or ZIP</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="game-action-button"
+                      onClick={() => {
+                        setActionsOpen(false);
+                        saveFolderInputRef.current?.click();
+                      }}
+                    >
+                      <Icon name="folder" />
+                      <span>Folder</span>
                     </button>
                   </div>
                 )}

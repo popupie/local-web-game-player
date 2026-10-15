@@ -3360,25 +3360,39 @@
 
   // shared/indexedDbSaveTracking.ts
   var INDEXED_DB_MARKER_PREFIX = "__mz_player_indexeddb:";
+  var INDEXED_DB_SCOPE_PREFIX = "__mz_player_game_db:";
   function trackedIndexedDbMarkerPrefix(namespace) {
     return `${INDEXED_DB_MARKER_PREFIX}${encodeURIComponent(namespace)}:`;
   }
   function trackedIndexedDbMarkerKey(namespace, databaseName) {
     return `${trackedIndexedDbMarkerPrefix(namespace)}${encodeURIComponent(databaseName)}`;
   }
+  function scopedIndexedDbName(namespace, databaseName) {
+    return `${INDEXED_DB_SCOPE_PREFIX}${encodeURIComponent(namespace)}:${encodeURIComponent(databaseName)}`;
+  }
   function trackIndexedDbDatabases(namespace) {
     const factory = window.indexedDB;
     if (!factory) return;
     const trackedFactory = factory;
     if (trackedFactory.__mzPlayerDatabaseTrackingNamespace === namespace) return;
+    const rawGetItem = Storage.prototype.getItem;
     const rawSetItem = Storage.prototype.setItem;
     const rawRemoveItem = Storage.prototype.removeItem;
     const originalOpen = factory.open.bind(factory);
     const originalDeleteDatabase = factory.deleteDatabase.bind(factory);
     const markerKey = (name) => trackedIndexedDbMarkerKey(namespace, name);
-    const markDatabase = (name) => {
+    const physicalName = (name) => {
       try {
-        rawSetItem.call(window.localStorage, markerKey(name), "1");
+        const marker = rawGetItem.call(window.localStorage, markerKey(name));
+        if (marker === "1") return name;
+        return marker || scopedIndexedDbName(namespace, name);
+      } catch {
+        return scopedIndexedDbName(namespace, name);
+      }
+    };
+    const markDatabase = (name, physical) => {
+      try {
+        rawSetItem.call(window.localStorage, markerKey(name), physical);
       } catch {
       }
     };
@@ -3398,15 +3412,16 @@
           configurable: true,
           value(name, version) {
             const databaseName = String(name);
-            markDatabase(databaseName);
-            return version === void 0 ? originalOpen(databaseName) : originalOpen(databaseName, version);
+            const physicalDatabaseName = physicalName(databaseName);
+            markDatabase(databaseName, physicalDatabaseName);
+            return version === void 0 ? originalOpen(physicalDatabaseName) : originalOpen(physicalDatabaseName, version);
           }
         },
         deleteDatabase: {
           configurable: true,
           value(name) {
             const databaseName = String(name);
-            const request = originalDeleteDatabase(databaseName);
+            const request = originalDeleteDatabase(physicalName(databaseName));
             request.addEventListener("success", () => {
               unmarkDatabase(databaseName);
             });

@@ -28,6 +28,10 @@ import {
   listenForSessionFileRequests,
 } from "@/src/lib/playerCache";
 import { downloadSaveZip } from "@/src/lib/saveExport";
+import {
+  clearAllGameIndexedDbSaves,
+  clearGameIndexedDbSaves,
+} from "@/src/lib/saveCleanup";
 import { importSaveFile, importSaveFolder } from "@/src/lib/saveImport";
 import { registerPlayerServiceWorker } from "@/src/lib/serviceWorker";
 import {
@@ -305,14 +309,25 @@ export function useGameLibrary(onImportStart?: () => void) {
   async function removeGame(game: GameRecord) {
     setError(null);
     setNotice(null);
-    await deleteGame(game.id);
-    clearGameStorageNamespace(game.id);
-    clearSessionFolder(game.id);
-    clearServiceWorkerGameCache(game.id);
-    const remaining = games.filter((item) => item.id !== game.id);
-    setGames(remaining);
-    setActiveGameId(remaining[0]?.id ?? null);
-    setStorage(await estimateStorage());
+    try {
+      if (activeGameId === game.id) {
+        setActiveGameId(null);
+        await waitForNextPaint();
+      }
+      await clearGameIndexedDbSaves(game);
+      await deleteGame(game.id);
+      clearGameStorageNamespace(game.id);
+      clearSessionFolder(game.id);
+      clearServiceWorkerGameCache(game.id);
+      const remaining = games.filter((item) => item.id !== game.id);
+      setGames(remaining);
+      setActiveGameId(remaining[0]?.id ?? null);
+      setStorage(await estimateStorage());
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Game removal failed.",
+      );
+    }
   }
 
   async function clearStorage() {
@@ -325,12 +340,14 @@ export function useGameLibrary(onImportStart?: () => void) {
     setError(null);
     setNotice(null);
     try {
+      setActiveGameId(null);
+      await waitForNextPaint();
       await clearServiceWorkerPlayerCache();
+      await clearAllGameIndexedDbSaves();
       await clearPlayerStorage();
       clearAllGameStorageNamespaces();
       clearAllSessionFolders();
       setGames([]);
-      setActiveGameId(null);
       setStorage(await estimateStorageAfterMutation(previousStorage));
       setNotice("Storage cleared.");
     } catch (cause) {
