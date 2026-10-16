@@ -1,4 +1,4 @@
-# Local Web Game Player
+# Local Web Game Player (WIP)
 
 Local Web Game Player runs compatible local HTML game exports directly in your
 browser. It supports RPG Maker MV/MZ, WOLF RPG, TyranoScript, Construct 2 NW.js, and
@@ -22,16 +22,24 @@ project and is not included with this app.
 
 ## Feature Support
 
-| Engine          | Compatible input                                                                            | Overlay                                | Text log                                              | Save backup                                                | Engine-specific support                                                         |
-| --------------- | ------------------------------------------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| RPG Maker MV/MZ | Web export or extracted NW.js game, as a folder or ZIP                                      | Yes, for canvas text                   | Yes, for messages, choices, names, and scrolling text | Yes, for browser saves and emulated desktop save files     | Standard encrypted image/audio assets and common NW.js/Node APIs                |
-| WOLF RPG        | `wolftools` web export containing `index.html`, `asset_manifest.json`, and extracted assets | No                                     | No                                                    | Yes, for the Browser Woditor save directory                | Browser Woditor playback, lazy asset loading, canvas sizing, and input handling |
-| TyranoScript    | Web export or extracted desktop game, as a folder or ZIP                                    | Yes, for HTML dialogue and choices     | Yes                                                   | Yes, when saves use browser storage                        | Desktop file-save configuration is redirected to browser storage                |
-| Construct 2     | Web export or extracted `package.nw`, as a folder or ZIP                                    | Yes, for Text and SpriteFont objects   | Yes                                                   | Yes, for browser, IndexedDB, and emulated filesystem saves | Common NW.js/Node APIs                                                          |
-| Cocos Creator   | Web export or extracted Electron app, as a folder or ZIP                                    | Yes, for Label and RichText components | Yes                                                   | Yes, for browser, IndexedDB, and emulated filesystem saves | Common Electron/Node APIs                                                       |
+| Engine          | Compatible input                                                            | Overlay and text log | Save backup | Save import | Engine-specific support                                                         |
+| --------------- | --------------------------------------------------------------------------- | -------------------- | ----------- | ----------- | ------------------------------------------------------------------------------- |
+| RPG Maker MV/MZ | Web export or extracted NW.js game                                          | Yes                  | Yes         | Yes         | Standard encrypted image/audio assets and common NW.js/Node APIs                |
+| WOLF RPG        | Supports web exports from [wolftools](https://github.com/popupie/wolftools) | No                   | Yes         | No          | Browser Woditor playback, lazy asset loading, canvas sizing, and input handling |
+| TyranoScript    | Web export or extracted desktop game, as a folder or ZIP                    | Yes                  | Yes         | Yes         | Desktop file-save configuration is redirected to browser storage                |
+| Construct 2     | Web export or extracted `package.nw`                                        | Yes                  | Yes         | No          | Common NW.js/Node APIs                                                          |
+| Cocos Creator   | Web export or extracted Electron app, as a folder or ZIP                    | Yes                  | Yes         | Yes         | Common Electron/Node APIs                                                       |
 
 Compatibility can still vary when a game or plugin relies
 on an API that the browser player does not emulate.
+
+## Notes
+
+- This is an unofficial player for user provided web game exports. It is not
+  affiliated with or endorsed by Gotcha Gotcha Games, KADOKAWA, Degica, SmokingWOLF,
+  or the TyranoScript project.
+- This project is a work in progress. The source code structure, features, and supported formats may change over time. However, approach to [privacy](#privacy) will remain unchanged.
+- Game saves are stored locally in your browser. Browser storage may be cleared automatically or removed by browser settings, so export your saves regularly to keep backups.
 
 ## App Flow
 
@@ -48,8 +56,8 @@ on an API that the browser player does not emulate.
 10. Use Overlay to collect game text in a readable text log.
 11. Use Show to make overlay text visible on top of the game.
 12. Use Guard to stop chosen keys from going into the game.
-13. Download a save ZIP, or import a save folder, individual file, or ZIP, from
-    a game's options menu.
+13. Download a save ZIP, or import an extracted save folder, from a game's
+    options menu.
 
 ## Web Export Examples
 
@@ -232,9 +240,3 @@ your saves when you want to keep a backup outside the browser.
 ZIP imports are stored in browser storage. Folder opens may be persistent when
 the browser supports folder handles, or session-only when it only supports the
 older folder picker.
-
-## Notes
-
-This is an unofficial player for user provided web game exports. It is not
-affiliated with or endorsed by Gotcha Gotcha Games, KADOKAWA, Degica, SmokingWOLF,
-or the TyranoScript project.
