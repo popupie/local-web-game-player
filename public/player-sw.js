@@ -5,8 +5,8 @@ const FILE_STORE = "files";
 const BLOB_STORE = "blobs";
 const HANDLE_STORE = "handles";
 
-const PLAYER_DESKTOP_RUNTIME_VERSION = "desktop-api-9";
-const PLAYER_BRIDGE_RUNTIME_VERSION = "bridge-api-15";
+const PLAYER_DESKTOP_RUNTIME_VERSION = "desktop-api-10";
+const PLAYER_BRIDGE_RUNTIME_VERSION = "bridge-api-16";
 const PLAYER_WOLF_RUNTIME_VERSION = "wolf-compat-12";
 const SESSION_FILE_TIMEOUT_MS = 10000;
 const EMPTY_SOURCE_MAP_TEXT = '{"version":3,"sources":[],"mappings":""}';

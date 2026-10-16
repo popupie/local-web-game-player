@@ -158,6 +158,7 @@ import {
     greenworksNativeFallback,
     mainModule,
     modules,
+    osModule,
     steamNativeFallback,
     timersModule,
   } = createNodeBuiltins({

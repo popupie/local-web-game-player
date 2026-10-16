@@ -471,6 +471,7 @@ export function createNodeBuiltins({
     greenworksNativeFallback,
     mainModule,
     modules,
+    osModule,
     steamNativeFallback,
     timersModule,
   };

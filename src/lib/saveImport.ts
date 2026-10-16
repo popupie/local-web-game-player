@@ -334,11 +334,16 @@ async function loadSaveArchive(file: File): Promise<{
   if (files.length > MAX_SAVE_ENTRY_COUNT) {
     throw new Error("This save ZIP contains too many files.");
   }
+  const archivePaths = files.map((entry) => normalizeStoredPath(entry.name));
+  const importPaths = manifest
+    ? archivePaths
+    : normalizeSaveEntryPaths(archivePaths);
 
   let totalBytes = 0;
   const entries: LoadedSaveEntry[] = [];
-  for (const fileEntry of files) {
-    const path = normalizeStoredPath(fileEntry.name);
+  for (let index = 0; index < files.length; index += 1) {
+    const fileEntry = files[index];
+    const path = importPaths[index];
     if (!path) continue;
     const bytes = await fileEntry.async("uint8array");
     totalBytes += bytes.byteLength;
@@ -357,6 +362,30 @@ async function loadSaveArchive(file: File): Promise<{
   return { entries, manifest };
 }
 
+function normalizeSaveEntryPaths(paths: string[]): string[] {
+  const roots = paths.map((path) => {
+    const separator = path.indexOf("/");
+    return separator > 0 ? path.slice(0, separator) : undefined;
+  });
+  const commonRoot =
+    roots.length > 0 &&
+    roots.every((root) => root !== undefined && root === roots[0])
+      ? roots[0]
+      : undefined;
+  const normalizedRoot = commonRoot?.toLowerCase();
+  const preserveSaveRoot =
+    normalizedRoot === "save" ||
+    normalizedRoot === "localstorage" ||
+    normalizedRoot === "indexeddb" ||
+    normalizedRoot?.endsWith("-save");
+
+  return paths.map((path) =>
+    commonRoot && !preserveSaveRoot && path.startsWith(`${commonRoot}/`)
+      ? path.slice(commonRoot.length + 1)
+      : path,
+  );
+}
+
 function relativeSavePaths(files: File[]): Array<{
   file: File;
   path: string;
@@ -369,21 +398,13 @@ function relativeSavePaths(files: File[]): Array<{
       hasRelativePath: Boolean(relativePath),
     };
   });
-  const relativeRoots = paths
-    .filter((entry) => entry.hasRelativePath)
-    .map((entry) => entry.path.split("/")[0]);
-  const commonRoot =
-    relativeRoots.length === paths.length &&
-    relativeRoots.every((root) => root === relativeRoots[0])
-      ? relativeRoots[0]
-      : undefined;
+  const normalizedPaths = paths.every((entry) => entry.hasRelativePath)
+    ? normalizeSaveEntryPaths(paths.map((entry) => entry.path))
+    : paths.map((entry) => entry.path);
 
-  return paths.map(({ file, path }) => ({
+  return paths.map(({ file }, index) => ({
     file,
-    path:
-      commonRoot && path.startsWith(`${commonRoot}/`)
-        ? path.slice(commonRoot.length + 1)
-        : path,
+    path: normalizedPaths[index],
   }));
 }
 
@@ -538,6 +559,68 @@ function constructSlot(path: string): string | undefined {
   return match ? decodePathSegment(match[1]) : undefined;
 }
 
+function portableLocalStorageKey(key: string): string {
+  const namespaced = /^mz-player:[^:]*:(.*)$/su.exec(key);
+  return namespaced?.[1] ?? key;
+}
+
+function legacyEscape(value: string): string {
+  const escapeValue = (
+    globalThis as typeof globalThis & {
+      escape?: (input: string) => string;
+    }
+  ).escape;
+  return escapeValue ? escapeValue(value) : encodeURIComponent(value);
+}
+
+function legacyUnescape(value: string): string {
+  const unescapeValue = (
+    globalThis as typeof globalThis & {
+      unescape?: (input: string) => string;
+    }
+  ).unescape;
+  return unescapeValue ? unescapeValue(value) : decodeURIComponent(value);
+}
+
+function tyranoSaveStorageEntry(
+  path: string,
+  bytes: Uint8Array,
+): { key: string; value: string } | undefined {
+  const filename = normalizeStoredPath(path).split("/").at(-1);
+  if (!filename?.toLowerCase().endsWith(".sav")) return undefined;
+  const key = filename.slice(0, -".sav".length);
+  const text = textFromBytes(bytes).replace(/^\uFEFF/u, "").trim();
+
+  try {
+    if (/^%(?:7b|5b)/iu.test(text)) {
+      JSON.parse(legacyUnescape(text));
+      return { key, value: text };
+    }
+    JSON.parse(text);
+    return { key, value: legacyEscape(text) };
+  } catch {
+    throw new Error(`Invalid TyranoScript save file: ${filename}`);
+  }
+}
+
+function cocosSaveRecordKeys(path: string): {
+  directoryKeys: string[];
+  fileKey: string;
+} {
+  const normalized = normalizeStoredPath(path);
+  if (!normalized) throw new Error("A Cocos save file has an invalid path.");
+  const fileKey = `dat:${normalized}`;
+  const directoryKeys = ["dat:"];
+  const parts = normalized.split("/");
+  parts.pop();
+  let directory = "dat:";
+  for (const part of parts) {
+    directory += directory.endsWith(":") ? part : `/${part}`;
+    directoryKeys.push(directory);
+  }
+  return { directoryKeys, fileKey };
+}
+
 function indexedDbTargetFromPath(
   path: string,
 ): Extract<SaveExportTarget, { kind: "indexeddb" }> | undefined {
@@ -555,7 +638,7 @@ function indexedDbTargetFromPath(
 
 function wolfSaveRelativePath(path: string): string | undefined {
   let normalized = normalizeStoredPath(path);
-  const saveRoot = normalized.indexOf("-Save/");
+  const saveRoot = normalized.toLowerCase().indexOf("-save/");
   if (saveRoot >= 0) {
     normalized = normalized.slice(saveRoot + "-Save/".length);
   }
@@ -596,7 +679,6 @@ async function wolfDatabaseName(
   gameId: string,
   factory: IDBFactory,
   storage: Storage,
-  targetDatabase?: string,
 ): Promise<string> {
   const names = await indexedDbNamesForGame(
     gameId,
@@ -606,14 +688,6 @@ async function wolfDatabaseName(
   );
   const existing = names.find((name) => name.includes(gameId));
   if (existing) return existing;
-  if (targetDatabase?.includes(gameId) && targetDatabase.endsWith("-Save")) {
-    return targetDatabase;
-  }
-  const transferableTarget =
-    /^\/data0\/[0-9a-f-]{36}(_.+-Save)$/iu.exec(targetDatabase ?? "");
-  if (transferableTarget) {
-    return `/data0/${gameId}${transferableTarget[1]}`;
-  }
   return deriveWolfDatabaseName(gameId);
 }
 
@@ -880,13 +954,15 @@ async function collectImportWrites(
 ): Promise<IndexedDbWrite[]> {
   const prefix = storageNamespace(game.id);
   const indexedDbWrites: IndexedDbWrite[] = [];
+  const cocosDirectoryKeys = new Set<string>();
   let resolvedWolfDatabase: string | undefined;
 
   for (const entry of entries) {
     const importPath = importPathForEngine(engine, entry);
     const exactTarget = entry.target;
     if (exactTarget?.kind === "local-storage") {
-      storage.setItem(`${prefix}${exactTarget.key}`, textFromBytes(entry.bytes));
+      const storageKey = portableLocalStorageKey(exactTarget.key);
+      storage.setItem(`${prefix}${storageKey}`, textFromBytes(entry.bytes));
       const mvKey = rpgMakerStorageKey(importPath);
       const mzKey = rpgMakerMzStorageKey(importPath);
       if (engine === "rpg-maker" && (mvKey || mzKey)) {
@@ -907,7 +983,10 @@ async function collectImportWrites(
         }
       }
       const localConstructSlot =
-        engine === "construct-2" ? constructSlot(importPath) : undefined;
+        engine === "construct-2"
+          ? constructSlot(importPath) ??
+            /^__c2save_(.+)$/u.exec(storageKey)?.[1]
+          : undefined;
       if (localConstructSlot) {
         indexedDbWrites.push({
           database: "_C2SaveStates",
@@ -948,12 +1027,14 @@ async function collectImportWrites(
       continue;
     }
 
-    const localStorageMatch = /^localStorage\/(.+)\.txt$/u.exec(importPath);
+    const localStorageMatch = /^localStorage\/(.+)\.txt$/iu.exec(importPath);
     if (localStorageMatch) {
-      storage.setItem(
-        `${prefix}${decodePathSegment(localStorageMatch[1])}`,
-        textFromBytes(entry.bytes),
+      const storageKey = portableLocalStorageKey(
+        decodePathSegment(localStorageMatch[1]),
       );
+      storage.setItem(`${prefix}${storageKey}`, textFromBytes(entry.bytes));
+      storage.removeItem(`${prefix}${VFS_FILE_PREFIX}${storageKey}.txt`);
+      storage.removeItem(`${prefix}${VFS_META_PREFIX}${storageKey}.txt`);
       continue;
     }
 
@@ -964,9 +1045,7 @@ async function collectImportWrites(
     const wolfPath = wolfSaveRelativePath(importPath);
     const isWolfEntry =
       engine === "wolf" &&
-      (wolfPath ||
-        (indexedTarget?.database.endsWith("-Save") &&
-          indexedTarget.store === "FILE_DATA"));
+      (wolfPath || indexedTarget?.store === "FILE_DATA");
     if (isWolfEntry) {
       const relativePath = wolfPath ?? wolfSaveRelativePath(String(
         indexedTarget && deserializeIndexedDbKey(indexedTarget.key),
@@ -976,7 +1055,6 @@ async function collectImportWrites(
         game.id,
         factory,
         storage,
-        indexedTarget?.database,
       );
       const timestamp = new Date();
       const root = resolvedWolfDatabase.replace(/\/+$/u, "");
@@ -1003,10 +1081,7 @@ async function collectImportWrites(
       continue;
     }
 
-    if (
-      indexedTarget?.database === "_C2SaveStates" &&
-      indexedTarget.store === "saves"
-    ) {
+    if (engine === "construct-2" && indexedTarget?.store === "saves") {
       const slot = String(deserializeIndexedDbKey(indexedTarget.key));
       indexedDbWrites.push({
         database: "_C2SaveStates",
@@ -1046,6 +1121,54 @@ async function collectImportWrites(
 
     if (indexedTarget) {
       indexedDbWrites.push(genericWrite(indexedTarget, entry));
+      continue;
+    }
+
+    if (engine === "tyrano") {
+      const tyranoEntry = tyranoSaveStorageEntry(importPath, entry.bytes);
+      if (tyranoEntry) {
+        storage.setItem(`${prefix}${tyranoEntry.key}`, tyranoEntry.value);
+        continue;
+      }
+    }
+
+    if (engine === "cocos") {
+      const timestamp = Date.now();
+      const { directoryKeys, fileKey } = cocosSaveRecordKeys(importPath);
+      for (const directoryKey of directoryKeys) {
+        if (cocosDirectoryKeys.has(directoryKey)) continue;
+        cocosDirectoryKeys.add(directoryKey);
+        indexedDbWrites.push({
+          database: "zui-fs",
+          store: "meta",
+          key: directoryKey,
+          value: {
+            size: 0,
+            mtime: timestamp,
+            ctime: timestamp,
+            isDir: true,
+          },
+        });
+      }
+      indexedDbWrites.push(
+        {
+          database: "zui-fs",
+          store: "files",
+          key: fileKey,
+          value: entry.bytes,
+        },
+        {
+          database: "zui-fs",
+          store: "meta",
+          key: fileKey,
+          value: {
+            size: entry.bytes.byteLength,
+            mtime: timestamp,
+            ctime: timestamp,
+            isDir: false,
+          },
+        },
+      );
       continue;
     }
 
