@@ -13,76 +13,47 @@ import {
   VFS_META_PREFIX,
 } from "@/shared/virtualFileSystem";
 import { storageNamespace, unnamespaceStorageKey } from "@/src/lib/keys";
+import {
+  CONSTRUCT2_SAVE_DATABASE,
+  constructExportPathForStorageKey,
+  isConstructIndexedDbRecord,
+  isConstructIndexedDbSaveRecord,
+  isConstructSaveDatabase,
+} from "@/src/engines/construct2/save";
+import { detectGameEngine } from "@/src/engines/detect";
+import {
+  RPG_MAKER_SAVE_DATABASE,
+  isRpgMakerIndexedDbRecord,
+  isRpgMakerIndexedDbSaveRecord,
+  isRpgMakerSaveDatabase,
+  rpgMakerExportPathForStorageKey,
+} from "@/src/engines/rpgmaker_mvmz/save";
+import {
+  isWolfIndexedDbRecord,
+  isWolfIndexedDbSaveRecord,
+  isWolfSaveDatabase,
+  wolfSaveRelativePath,
+} from "@/src/engines/wolf/save";
 import { normalizeStoredPath } from "@/src/lib/paths";
-import { getStoredFilesForGame } from "@/src/lib/storage";
+import type {
+  GameEngine,
+  IndexedDbRecord,
+  SaveArchiveManifest,
+  SaveExportEntry,
+  SaveExportTarget,
+  SerializedIndexedDbKey,
+} from "@/src/lib/saveTypes";
 import type { GameRecord } from "@/src/lib/types";
 
-export interface SaveExportEntry {
-  path: string;
-  data: string | Uint8Array;
-  target?: SaveExportTarget;
-}
-
-export interface IndexedDbRecord {
-  autoIncrement?: boolean;
-  database: string;
-  indexes?: Array<{
-    name: string;
-    keyPath: string | string[];
-    multiEntry: boolean;
-    unique: boolean;
-  }>;
-  store: string;
-  key: IDBValidKey;
-  keyPath?: string | string[] | null;
-  value: unknown;
-}
-
-export type GameEngine =
-  | "rpg-maker"
-  | "wolf"
-  | "tyrano"
-  | "construct-2"
-  | "cocos"
-  | "unknown";
-
-export type SerializedIndexedDbKey =
-  | { type: "string"; value: string }
-  | { type: "number"; value: number }
-  | { type: "date"; value: string }
-  | { type: "binary"; value: string }
-  | { type: "array"; value: SerializedIndexedDbKey[] };
-
-export type SaveExportTarget =
-  | { kind: "local-storage"; key: string }
-  | { kind: "vfs"; path: string }
-  | {
-      kind: "indexeddb";
-      database: string;
-      store: string;
-      key: SerializedIndexedDbKey;
-      autoIncrement?: boolean;
-      indexes?: Array<{
-        name: string;
-        keyPath: string | string[];
-        multiEntry: boolean;
-        unique: boolean;
-      }>;
-      keyPath?: string | string[] | null;
-      valueType?: string;
-      mimeType?: string;
-    };
-
-export interface SaveArchiveManifest {
-  format: "mz-browser-player-save-backup";
-  version: 1;
-  engine: GameEngine;
-  entries: Array<{
-    path: string;
-    dataType: "text" | "binary";
-    target?: SaveExportTarget;
-  }>;
-}
+export { detectGameEngine };
+export type {
+  GameEngine,
+  IndexedDbRecord,
+  SaveArchiveManifest,
+  SaveExportEntry,
+  SaveExportTarget,
+  SerializedIndexedDbKey,
+} from "@/src/lib/saveTypes";
 
 export const SAVE_ARCHIVE_MANIFEST_PATH = ".mz-player/backup.json";
 export const LEGACY_SAVE_ARCHIVE_MANIFEST_PATH =
@@ -129,36 +100,6 @@ function decodeVirtualFileValue(value: string): string | Uint8Array {
   return bytesFromBase64(value.slice(VFS_BINARY_PREFIX.length));
 }
 
-function savePathForRpgKey(key: string): string | undefined {
-  if (key === "RPG Config") return "save/config.rpgsave";
-  if (key === "RPG Global") return "save/global.rpgsave";
-  if (key === "RPG Shared") return "save/shared.rmmzsave";
-
-  const mzSave = /^(?:_?localforage\/)?rmmzsave\.(.+)$/u.exec(key);
-  if (mzSave) {
-    const saveName = normalizeStoredPath(mzSave[1]);
-    if (saveName) return `save/${saveName}.rmmzsave`;
-  }
-
-  const slot = /^RPG File(\d+)(bak)?$/u.exec(key);
-  if (slot) {
-    return `save/file${slot[1]}.rpgsave${slot[2] ? ".bak" : ""}`;
-  }
-
-  const customSave = /^RPG Save (.+)$/u.exec(key);
-  if (customSave) {
-    const customPath = normalizeStoredPath(customSave[1]);
-    if (customPath) return `save/${customPath}`;
-  }
-
-  return undefined;
-}
-
-function savePathForConstructKey(key: string): string | undefined {
-  const match = /^__c2save_(.+)$/u.exec(key);
-  return match ? `save/${safePathSegment(match[1])}.json` : undefined;
-}
-
 function localStorageExportPath(key: string): string {
   return `localStorage/${encodeURIComponent(key)}.txt`;
 }
@@ -175,8 +116,8 @@ function exportPathForStorageKey(key: string): string | undefined {
     return normalizeStoredPath(key.slice(VFS_FILE_PREFIX.length));
   }
   return (
-    savePathForRpgKey(key) ??
-    savePathForConstructKey(key) ??
+    rpgMakerExportPathForStorageKey(key) ??
+    constructExportPathForStorageKey(key) ??
     localStorageExportPath(key)
   );
 }
@@ -245,40 +186,6 @@ function trackedIndexedDbNames(
   return names;
 }
 
-export async function detectGameEngine(gameId: string): Promise<GameEngine> {
-  const paths = (await getStoredFilesForGame(gameId)).map((record) =>
-    normalizeStoredPath(record.path).toLowerCase(),
-  );
-  const hasPath = (name: string) =>
-    paths.some((path) => path === name || path.endsWith(`/${name}`));
-
-  if (
-    hasPath("woditor.js") &&
-    hasPath("woditor.wasm") &&
-    (hasPath("data.wolf") || hasPath("asset_manifest.json"))
-  ) {
-    return "wolf";
-  }
-  if (hasPath("c2runtime.js")) return "construct-2";
-  if (hasPath("tyrano/tyrano.js") || hasPath("data/system/config.tjs")) {
-    return "tyrano";
-  }
-  if (
-    hasPath("js/rpg_core.js") ||
-    hasPath("js/rmmz_core.js") ||
-    hasPath("data/system.json")
-  ) {
-    return "rpg-maker";
-  }
-  if (
-    hasPath("application.js") ||
-    paths.some((path) => path.includes("cocos-js/"))
-  ) {
-    return "cocos";
-  }
-  return "unknown";
-}
-
 async function availableIndexedDbNames(
   factory: IDBFactory,
 ): Promise<Set<string>> {
@@ -311,52 +218,54 @@ export async function indexedDbNamesForGame(
       if (
         !name.startsWith(INDEXED_DB_SCOPE_PREFIX) &&
         name.includes(gameId) &&
-        name.endsWith("-Save")
+        isWolfSaveDatabase(name)
       ) {
         names.add(name);
       }
     }
     return Array.from(names)
-      .filter((name) => name.endsWith("-Save"))
+      .filter(isWolfSaveDatabase)
       .sort();
   }
 
   if (engine === "construct-2") {
     if (
       available.size === 0 ||
-      available.has("_C2SaveStates") ||
+      available.has(CONSTRUCT2_SAVE_DATABASE) ||
       available.has(
-        scopedIndexedDbName(storageNamespace(gameId), "_C2SaveStates"),
+        scopedIndexedDbName(
+          storageNamespace(gameId),
+          CONSTRUCT2_SAVE_DATABASE,
+        ),
       )
     ) {
-      names.add("_C2SaveStates");
+      names.add(CONSTRUCT2_SAVE_DATABASE);
     }
-    return Array.from(names)
-      .filter((name) => name === "_C2SaveStates")
-      .sort();
+    return Array.from(names).filter(isConstructSaveDatabase).sort();
   }
 
   if (engine === "rpg-maker") {
     if (
       available.size === 0 ||
-      available.has("localforage") ||
+      available.has(RPG_MAKER_SAVE_DATABASE) ||
       available.has(
-        scopedIndexedDbName(storageNamespace(gameId), "localforage"),
+        scopedIndexedDbName(
+          storageNamespace(gameId),
+          RPG_MAKER_SAVE_DATABASE,
+        ),
       )
     ) {
-      names.add("localforage");
+      names.add(RPG_MAKER_SAVE_DATABASE);
     }
-    return Array.from(names)
-      .filter((name) => name === "localforage")
-      .sort();
+    return Array.from(names).filter(isRpgMakerSaveDatabase).sort();
   }
 
   return Array.from(names)
     .filter(
       (name) =>
-        name !== "localforage" &&
-        name !== "_C2SaveStates" &&
-        !name.endsWith("-Save"),
+        !isRpgMakerSaveDatabase(name) &&
+        !isConstructSaveDatabase(name) &&
+        !isWolfSaveDatabase(name),
     )
     .sort();
 }
@@ -520,37 +429,20 @@ function structuredJson(value: unknown): string {
   return serialized ?? String(value);
 }
 
-function wolfSavePath(key: IDBValidKey): string | undefined {
-  if (typeof key !== "string") return undefined;
-  const normalized = normalizeStoredPath(key);
-  const saveRoot = normalized.indexOf("-Save/");
-  if (saveRoot < 0) return undefined;
-  return normalizeStoredPath(normalized.slice(saveRoot + "-Save/".length));
-}
-
 export function isIndexedDbSaveRecord(
   engine: GameEngine,
   record: IndexedDbRecord,
 ): boolean {
-  if (record.database === "localforage") {
-    return (
-      engine === "rpg-maker" &&
-      record.store === "keyvaluepairs" &&
-      typeof record.key === "string" &&
-      Boolean(savePathForRpgKey(record.key))
-    );
+  if (isRpgMakerIndexedDbRecord(record)) {
+    return engine === "rpg-maker" && isRpgMakerIndexedDbSaveRecord(record);
   }
-  if (record.database === "_C2SaveStates") {
-    return engine === "construct-2" && record.store === "saves";
+  if (isConstructIndexedDbRecord(record)) {
+    return engine === "construct-2" && isConstructIndexedDbSaveRecord(record);
   }
-  if (record.database.endsWith("-Save")) {
-    return (
-      engine === "wolf" &&
-      record.store === "FILE_DATA" &&
-      Boolean(wolfSavePath(record.key))
-    );
+  if (isWolfIndexedDbRecord(record)) {
+    return engine === "wolf" && isWolfIndexedDbSaveRecord(record);
   }
-  return !["rpg-maker", "wolf", "construct-2"].includes(engine);
+  return true;
 }
 
 async function genericIndexedDbData(
@@ -593,16 +485,19 @@ export async function exportIndexedDbRecord(
     mimeType: record.value instanceof Blob ? record.value.type : undefined,
   };
 
-  if (record.database.endsWith("-Save") && record.store === "FILE_DATA") {
+  if (isWolfIndexedDbRecord(record) && record.store === "FILE_DATA") {
     const contents =
       typeof record.value === "object" && record.value !== null
         ? bytesFromValue((record.value as { contents?: unknown }).contents)
         : undefined;
-    const path = wolfSavePath(record.key);
+    const path =
+      typeof record.key === "string"
+        ? wolfSaveRelativePath(record.key)
+        : undefined;
     return contents && path ? { path, data: contents, target } : undefined;
   }
 
-  if (record.database === "_C2SaveStates" && record.store === "saves") {
+  if (isConstructIndexedDbRecord(record) && record.store === "saves") {
     const save = record.value as { data?: unknown; slot?: unknown };
     const slot = String(save?.slot ?? indexedDbKeyLabel(record.key));
     const data =
@@ -613,11 +508,11 @@ export async function exportIndexedDbRecord(
   }
 
   if (
-    record.database === "localforage" &&
+    isRpgMakerIndexedDbRecord(record) &&
     record.store === "keyvaluepairs" &&
     typeof record.key === "string"
   ) {
-    const path = savePathForRpgKey(record.key);
+    const path = rpgMakerExportPathForStorageKey(record.key);
     if (path) {
       const payload = await genericIndexedDbData(record.value);
       return { path, data: payload.data, target };

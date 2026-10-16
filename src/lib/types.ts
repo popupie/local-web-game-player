@@ -1,3 +1,8 @@
+import type {
+  WolfParentToPlayerMessage,
+  WolfPlayerToParentMessage,
+} from "@/src/engines/wolf/messages";
+
 export type ReservedKeyAction = "toggleOverlay" | "toggleReader" | "focusPlayer" | "fullscreen";
 
 export interface ReservedKey {
@@ -72,7 +77,7 @@ export type PlayerToParentMessage =
   | { type: "return-focus" }
   | { type: "text-log"; gameId: string; text: string; at: number }
   | { type: "runtime-error"; message: string; stack?: string }
-  | { type: "wolf-assets-request"; gameId: string; requestId: string };
+  | WolfPlayerToParentMessage;
 
 export type ParentToPlayerMessage =
   | { type: "player-settings"; settings: PlayerSettings }
@@ -80,12 +85,7 @@ export type ParentToPlayerMessage =
   | { type: "reader-mode"; enabled: boolean }
   | { type: "focus-game" }
   | { type: "player-viewport"; width: number; height: number; devicePixelRatio: number }
-  | {
-      type: "wolf-assets-response";
-      requestId: string;
-      assets?: Array<{ path: string; url: string; size: number }>;
-      error?: string;
-    };
+  | WolfParentToPlayerMessage;
 
 export interface ImportCandidate {
   title: string;

@@ -2,12 +2,7 @@ import JSZip from "jszip";
 import {
   LEGACY_SAVE_ARCHIVE_MANIFEST_PATH,
   SAVE_ARCHIVE_MANIFEST_PATH,
-  detectGameEngine,
   indexedDbNamesForGame,
-  type GameEngine,
-  type SaveArchiveManifest,
-  type SaveExportTarget,
-  type SerializedIndexedDbKey,
 } from "@/src/lib/saveExport";
 import {
   VFS_BINARY_PREFIX,
@@ -22,13 +17,38 @@ import {
 } from "@/shared/indexedDbSaveTracking";
 import { storageNamespace } from "@/src/lib/keys";
 import { normalizeStoredPath } from "@/src/lib/paths";
-import { getStoredFilesForGame } from "@/src/lib/storage";
+import { cocosIndexedDbWritesForImport } from "@/src/engines/cocos/save";
+import {
+  constructIndexedDbWriteForImport,
+  constructSlotForImportPath,
+  isConstructSaveDatabase,
+} from "@/src/engines/construct2/save";
+import { detectGameEngine } from "@/src/engines/detect";
+import {
+  RPG_MAKER_SAVE_DATABASE,
+  isRpgMakerSaveDatabase,
+  rpgMakerIndexedDbKeyForImport,
+  rpgMakerLocalStorageKeyForImport,
+} from "@/src/engines/rpgmaker_mvmz/save";
+import { tyranoLocalStorageEntryForImport } from "@/src/engines/tyrano/save";
+import {
+  deriveWolfDatabaseName,
+  isWolfSaveDatabase,
+  wolfIndexedDbWritesForImport,
+  wolfSaveRelativePath,
+} from "@/src/engines/wolf/save";
+import type {
+  GameEngine,
+  IndexedDbWrite,
+  SaveArchiveManifest,
+  SaveExportTarget,
+  SerializedIndexedDbKey,
+  StoreIndexSpec,
+} from "@/src/lib/saveTypes";
 import type { GameRecord } from "@/src/lib/types";
 
 const MAX_SAVE_ENTRY_COUNT = 10_000;
 const MAX_SAVE_ARCHIVE_BYTES = 256 * 1024 * 1024;
-const WOLF_FILE_MODE = 0o100666;
-const WOLF_DIRECTORY_MODE = 0o40777;
 
 type DataType = "text" | "binary";
 
@@ -42,30 +62,12 @@ interface LoadedSaveEntry {
 
 type SaveInputFile = File & { webkitRelativePath?: string };
 
-interface IndexedDbWrite {
-  autoIncrement?: boolean;
-  database: string;
-  indexes?: StoreIndexSpec[];
-  store: string;
-  key: IDBValidKey;
-  value: unknown;
-  keyPath?: string | string[] | null;
-  timestampIndex?: boolean;
-}
-
 interface StoreSpec {
   autoIncrement?: boolean;
   indexes?: StoreIndexSpec[];
   name: string;
   keyPath?: string | string[] | null;
   timestampIndex?: boolean;
-}
-
-interface StoreIndexSpec {
-  name: string;
-  keyPath: string | string[];
-  multiEntry: boolean;
-  unique: boolean;
 }
 
 export interface SaveImportResult {
@@ -536,91 +538,6 @@ function storeVirtualFile(
   }
 }
 
-function rpgMakerStorageKey(path: string): string | undefined {
-  const normalized = normalizeStoredPath(path).toLowerCase();
-  const match = /^(?:www\/)?save\/(.+)$/u.exec(normalized);
-  if (!match) return undefined;
-  const filename = match[1].split("/").at(-1) ?? match[1];
-  if (filename === "config.rpgsave") return "RPG Config";
-  if (filename === "global.rpgsave") return "RPG Global";
-  const slot = /^file(\d+)\.rpgsave(bak|\.bak)?$/u.exec(filename);
-  if (slot) return `RPG File${slot[1]}${slot[2] ? "bak" : ""}`;
-  return filename.endsWith(".rpgsave") ? `RPG Save ${match[1]}` : undefined;
-}
-
-function rpgMakerMzStorageKey(path: string): string | undefined {
-  const filename = normalizeStoredPath(path).split("/").at(-1)?.toLowerCase();
-  if (!filename?.endsWith(".rmmzsave")) return undefined;
-  return `rmmzsave.${filename.slice(0, -".rmmzsave".length)}`;
-}
-
-function constructSlot(path: string): string | undefined {
-  const match = /^save\/(.+)\.json$/iu.exec(normalizeStoredPath(path));
-  return match ? decodePathSegment(match[1]) : undefined;
-}
-
-function portableLocalStorageKey(key: string): string {
-  const namespaced = /^mz-player:[^:]*:(.*)$/su.exec(key);
-  return namespaced?.[1] ?? key;
-}
-
-function legacyEscape(value: string): string {
-  const escapeValue = (
-    globalThis as typeof globalThis & {
-      escape?: (input: string) => string;
-    }
-  ).escape;
-  return escapeValue ? escapeValue(value) : encodeURIComponent(value);
-}
-
-function legacyUnescape(value: string): string {
-  const unescapeValue = (
-    globalThis as typeof globalThis & {
-      unescape?: (input: string) => string;
-    }
-  ).unescape;
-  return unescapeValue ? unescapeValue(value) : decodeURIComponent(value);
-}
-
-function tyranoSaveStorageEntry(
-  path: string,
-  bytes: Uint8Array,
-): { key: string; value: string } | undefined {
-  const filename = normalizeStoredPath(path).split("/").at(-1);
-  if (!filename?.toLowerCase().endsWith(".sav")) return undefined;
-  const key = filename.slice(0, -".sav".length);
-  const text = textFromBytes(bytes).replace(/^\uFEFF/u, "").trim();
-
-  try {
-    if (/^%(?:7b|5b)/iu.test(text)) {
-      JSON.parse(legacyUnescape(text));
-      return { key, value: text };
-    }
-    JSON.parse(text);
-    return { key, value: legacyEscape(text) };
-  } catch {
-    throw new Error(`Invalid TyranoScript save file: ${filename}`);
-  }
-}
-
-function cocosSaveRecordKeys(path: string): {
-  directoryKeys: string[];
-  fileKey: string;
-} {
-  const normalized = normalizeStoredPath(path);
-  if (!normalized) throw new Error("A Cocos save file has an invalid path.");
-  const fileKey = `dat:${normalized}`;
-  const directoryKeys = ["dat:"];
-  const parts = normalized.split("/");
-  parts.pop();
-  let directory = "dat:";
-  for (const part of parts) {
-    directory += directory.endsWith(":") ? part : `/${part}`;
-    directoryKeys.push(directory);
-  }
-  return { directoryKeys, fileKey };
-}
-
 function indexedDbTargetFromPath(
   path: string,
 ): Extract<SaveExportTarget, { kind: "indexeddb" }> | undefined {
@@ -636,49 +553,11 @@ function indexedDbTargetFromPath(
   };
 }
 
-function wolfSaveRelativePath(path: string): string | undefined {
-  let normalized = normalizeStoredPath(path);
-  const saveRoot = normalized.toLowerCase().indexOf("-save/");
-  if (saveRoot >= 0) {
-    normalized = normalized.slice(saveRoot + "-Save/".length);
-  }
-  if (!normalized.toLowerCase().startsWith("save/")) return undefined;
-  return normalized;
-}
-
-function gameFileUrl(gameId: string, path: string): string {
-  const encodedPath = normalizeStoredPath(path)
-    .split("/")
-    .map(encodeURIComponent)
-    .join("/");
-  return `/play/${encodeURIComponent(gameId)}/${encodedPath}`;
-}
-
-async function deriveWolfDatabaseName(gameId: string): Promise<string> {
-  const files = await getStoredFilesForGame(gameId);
-  const settingsPath = files
-    .map((file) => normalizeStoredPath(file.path))
-    .filter((path) => path.toLowerCase().endsWith("settings.js"))
-    .sort((a, b) => a.length - b.length)[0];
-  if (!settingsPath) {
-    throw new Error("Could not locate the WOLF project settings for this game.");
-  }
-  const response = await fetch(gameFileUrl(gameId, settingsPath));
-  if (!response.ok) {
-    throw new Error("Could not read the WOLF project settings for this game.");
-  }
-  const source = await response.text();
-  const match = /\bprojectId\s*:\s*(["'])(.*?)\1/u.exec(source);
-  if (!match?.[2]) {
-    throw new Error("Could not identify the WOLF project save directory.");
-  }
-  return `/data0/${gameId}_${match[2].replace("/", "")}-Save`;
-}
-
 async function wolfDatabaseName(
   gameId: string,
   factory: IDBFactory,
   storage: Storage,
+  targetDatabase?: string,
 ): Promise<string> {
   const names = await indexedDbNamesForGame(
     gameId,
@@ -688,6 +567,17 @@ async function wolfDatabaseName(
   );
   const existing = names.find((name) => name.includes(gameId));
   if (existing) return existing;
+  if (
+    targetDatabase?.includes(gameId) &&
+    isWolfSaveDatabase(targetDatabase)
+  ) {
+    return targetDatabase;
+  }
+  const transferableTarget =
+    /^\/data0\/[0-9a-f-]{36}(_.+-Save)$/iu.exec(targetDatabase ?? "");
+  if (transferableTarget) {
+    return `/data0/${gameId}${transferableTarget[1]}`;
+  }
   return deriveWolfDatabaseName(gameId);
 }
 
@@ -961,10 +851,9 @@ async function collectImportWrites(
     const importPath = importPathForEngine(engine, entry);
     const exactTarget = entry.target;
     if (exactTarget?.kind === "local-storage") {
-      const storageKey = portableLocalStorageKey(exactTarget.key);
-      storage.setItem(`${prefix}${storageKey}`, textFromBytes(entry.bytes));
-      const mvKey = rpgMakerStorageKey(importPath);
-      const mzKey = rpgMakerMzStorageKey(importPath);
+      storage.setItem(`${prefix}${exactTarget.key}`, textFromBytes(entry.bytes));
+      const mvKey = rpgMakerLocalStorageKeyForImport(importPath);
+      const mzKey = rpgMakerIndexedDbKeyForImport(importPath);
       if (engine === "rpg-maker" && (mvKey || mzKey)) {
         storeVirtualFile(
           game.id,
@@ -975,7 +864,7 @@ async function collectImportWrites(
         );
         if (mzKey) {
           indexedDbWrites.push({
-            database: "localforage",
+            database: RPG_MAKER_SAVE_DATABASE,
             store: "keyvaluepairs",
             key: mzKey,
             value: textFromBytes(entry.bytes),
@@ -984,20 +873,15 @@ async function collectImportWrites(
       }
       const localConstructSlot =
         engine === "construct-2"
-          ? constructSlot(importPath) ??
-            /^__c2save_(.+)$/u.exec(storageKey)?.[1]
+          ? constructSlotForImportPath(importPath)
           : undefined;
       if (localConstructSlot) {
-        indexedDbWrites.push({
-          database: "_C2SaveStates",
-          store: "saves",
-          key: localConstructSlot,
-          value: {
-            slot: localConstructSlot,
-            data: textFromBytes(entry.bytes),
-          },
-          keyPath: "slot",
-        });
+        indexedDbWrites.push(
+          constructIndexedDbWriteForImport(
+            localConstructSlot,
+            textFromBytes(entry.bytes),
+          ),
+        );
       }
       continue;
     }
@@ -1010,14 +894,14 @@ async function collectImportWrites(
         storage,
       );
       if (engine === "rpg-maker") {
-        const mvKey = rpgMakerStorageKey(importPath);
-        const mzKey = rpgMakerMzStorageKey(importPath);
+        const mvKey = rpgMakerLocalStorageKeyForImport(importPath);
+        const mzKey = rpgMakerIndexedDbKeyForImport(importPath);
         if (mvKey) {
           storage.setItem(`${prefix}${mvKey}`, textFromBytes(entry.bytes));
         }
         if (mzKey) {
           indexedDbWrites.push({
-            database: "localforage",
+            database: RPG_MAKER_SAVE_DATABASE,
             store: "keyvaluepairs",
             key: mzKey,
             value: textFromBytes(entry.bytes),
@@ -1029,9 +913,7 @@ async function collectImportWrites(
 
     const localStorageMatch = /^localStorage\/(.+)\.txt$/iu.exec(importPath);
     if (localStorageMatch) {
-      const storageKey = portableLocalStorageKey(
-        decodePathSegment(localStorageMatch[1]),
-      );
+      const storageKey = decodePathSegment(localStorageMatch[1]);
       storage.setItem(`${prefix}${storageKey}`, textFromBytes(entry.bytes));
       storage.removeItem(`${prefix}${VFS_FILE_PREFIX}${storageKey}.txt`);
       storage.removeItem(`${prefix}${VFS_META_PREFIX}${storageKey}.txt`);
@@ -1045,7 +927,10 @@ async function collectImportWrites(
     const wolfPath = wolfSaveRelativePath(importPath);
     const isWolfEntry =
       engine === "wolf" &&
-      (wolfPath || indexedTarget?.store === "FILE_DATA");
+      (wolfPath ||
+        (indexedTarget &&
+          isWolfSaveDatabase(indexedTarget.database) &&
+          indexedTarget.store === "FILE_DATA"));
     if (isWolfEntry) {
       const relativePath = wolfPath ?? wolfSaveRelativePath(String(
         indexedTarget && deserializeIndexedDbKey(indexedTarget.key),
@@ -1055,50 +940,40 @@ async function collectImportWrites(
         game.id,
         factory,
         storage,
+        indexedTarget?.database,
       );
-      const timestamp = new Date();
-      const root = resolvedWolfDatabase.replace(/\/+$/u, "");
-      const relativeParts = relativePath.split("/");
-      relativeParts.pop();
-      let directory = root;
-      for (const part of relativeParts) {
-        directory += `/${part}`;
-        indexedDbWrites.push({
-          database: resolvedWolfDatabase,
-          store: "FILE_DATA",
-          key: directory,
-          value: { timestamp, mode: WOLF_DIRECTORY_MODE },
-          timestampIndex: true,
-        });
-      }
-      indexedDbWrites.push({
-        database: resolvedWolfDatabase,
-        store: "FILE_DATA",
-        key: `${root}/${relativePath}`,
-        value: { timestamp, mode: WOLF_FILE_MODE, contents: entry.bytes },
-        timestampIndex: true,
-      });
+      indexedDbWrites.push(
+        ...wolfIndexedDbWritesForImport(
+          resolvedWolfDatabase,
+          relativePath,
+          entry.bytes,
+        ),
+      );
       continue;
     }
 
-    if (engine === "construct-2" && indexedTarget?.store === "saves") {
+    if (
+      indexedTarget &&
+      isConstructSaveDatabase(indexedTarget.database) &&
+      indexedTarget.store === "saves"
+    ) {
       const slot = String(deserializeIndexedDbKey(indexedTarget.key));
-      indexedDbWrites.push({
-        database: "_C2SaveStates",
-        store: "saves",
-        key: slot,
-        value: { slot, data: textFromBytes(entry.bytes) },
-        keyPath: "slot",
-      });
+      indexedDbWrites.push(
+        constructIndexedDbWriteForImport(slot, textFromBytes(entry.bytes)),
+      );
       storage.setItem(`${prefix}__c2save_${slot}`, textFromBytes(entry.bytes));
       continue;
     }
 
     if (
-      indexedTarget?.database === "localforage" &&
+      indexedTarget &&
+      isRpgMakerSaveDatabase(indexedTarget.database) &&
       indexedTarget.store === "keyvaluepairs"
     ) {
-      if (engine === "rpg-maker" && rpgMakerMzStorageKey(importPath)) {
+      if (
+        engine === "rpg-maker" &&
+        rpgMakerIndexedDbKeyForImport(importPath)
+      ) {
         storeVirtualFile(
           game.id,
           importPath,
@@ -1108,7 +983,7 @@ async function collectImportWrites(
         );
       }
       indexedDbWrites.push({
-        database: "localforage",
+        database: RPG_MAKER_SAVE_DATABASE,
         store: "keyvaluepairs",
         key: deserializeIndexedDbKey(indexedTarget.key),
         value:
@@ -1125,7 +1000,10 @@ async function collectImportWrites(
     }
 
     if (engine === "tyrano") {
-      const tyranoEntry = tyranoSaveStorageEntry(importPath, entry.bytes);
+      const tyranoEntry = tyranoLocalStorageEntryForImport(
+        importPath,
+        textFromBytes(entry.bytes),
+      );
       if (tyranoEntry) {
         storage.setItem(`${prefix}${tyranoEntry.key}`, tyranoEntry.value);
         continue;
@@ -1133,53 +1011,24 @@ async function collectImportWrites(
     }
 
     if (engine === "cocos") {
-      const timestamp = Date.now();
-      const { directoryKeys, fileKey } = cocosSaveRecordKeys(importPath);
-      for (const directoryKey of directoryKeys) {
-        if (cocosDirectoryKeys.has(directoryKey)) continue;
-        cocosDirectoryKeys.add(directoryKey);
-        indexedDbWrites.push({
-          database: "zui-fs",
-          store: "meta",
-          key: directoryKey,
-          value: {
-            size: 0,
-            mtime: timestamp,
-            ctime: timestamp,
-            isDir: true,
-          },
-        });
-      }
       indexedDbWrites.push(
-        {
-          database: "zui-fs",
-          store: "files",
-          key: fileKey,
-          value: entry.bytes,
-        },
-        {
-          database: "zui-fs",
-          store: "meta",
-          key: fileKey,
-          value: {
-            size: entry.bytes.byteLength,
-            mtime: timestamp,
-            ctime: timestamp,
-            isDir: false,
-          },
-        },
+        ...cocosIndexedDbWritesForImport(
+          importPath,
+          entry.bytes,
+          cocosDirectoryKeys,
+        ),
       );
       continue;
     }
 
-    const mvKey = rpgMakerStorageKey(importPath);
-    const mzKey = rpgMakerMzStorageKey(importPath);
+    const mvKey = rpgMakerLocalStorageKeyForImport(importPath);
+    const mzKey = rpgMakerIndexedDbKeyForImport(importPath);
     if (engine === "rpg-maker" && (mvKey || mzKey)) {
       storeVirtualFile(game.id, importPath, entry.bytes, entry.dataType, storage);
       if (mvKey) storage.setItem(`${prefix}${mvKey}`, textFromBytes(entry.bytes));
       if (mzKey) {
         indexedDbWrites.push({
-          database: "localforage",
+          database: RPG_MAKER_SAVE_DATABASE,
           store: "keyvaluepairs",
           key: mzKey,
           value: textFromBytes(entry.bytes),
@@ -1188,16 +1037,13 @@ async function collectImportWrites(
       continue;
     }
 
-    const slot = engine === "construct-2" ? constructSlot(importPath) : undefined;
+    const slot =
+      engine === "construct-2"
+        ? constructSlotForImportPath(importPath)
+        : undefined;
     if (slot) {
       const data = textFromBytes(entry.bytes);
-      indexedDbWrites.push({
-        database: "_C2SaveStates",
-        store: "saves",
-        key: slot,
-        value: { slot, data },
-        keyPath: "slot",
-      });
+      indexedDbWrites.push(constructIndexedDbWriteForImport(slot, data));
       storage.setItem(`${prefix}__c2save_${slot}`, data);
       continue;
     }

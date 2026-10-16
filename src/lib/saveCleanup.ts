@@ -5,10 +5,19 @@ import {
   trackedIndexedDbMarkerPrefix,
 } from "@/shared/indexedDbSaveTracking";
 import {
-  detectGameEngine,
   indexedDbNamesForGame,
-  type GameEngine,
 } from "@/src/lib/saveExport";
+import { detectGameEngine } from "@/src/engines/detect";
+import {
+  CONSTRUCT2_SAVE_DATABASE,
+  isConstructSaveDatabase,
+} from "@/src/engines/construct2/save";
+import {
+  RPG_MAKER_SAVE_DATABASE,
+  isRpgMakerSaveDatabase,
+} from "@/src/engines/rpgmaker_mvmz/save";
+import { isWolfSaveDatabase } from "@/src/engines/wolf/save";
+import type { GameEngine } from "@/src/engines/types";
 import { storageNamespace } from "@/src/lib/keys";
 import type { GameRecord } from "@/src/lib/types";
 
@@ -147,7 +156,7 @@ async function clearKnownEngineDatabase(
   }
   if (sharedWithAnotherGame) return;
 
-  if (engine === "rpg-maker" && databaseName === "localforage") {
+  if (engine === "rpg-maker" && isRpgMakerSaveDatabase(databaseName)) {
     await deleteStoreRecords(
       factory,
       physicalName,
@@ -156,13 +165,13 @@ async function clearKnownEngineDatabase(
     );
     return;
   }
-  if (engine === "construct-2" && databaseName === "_C2SaveStates") {
+  if (engine === "construct-2" && isConstructSaveDatabase(databaseName)) {
     await deleteStoreRecords(factory, physicalName, "saves", () => true);
     return;
   }
   if (
     engine === "wolf" &&
-    databaseName.endsWith("-Save") &&
+    isWolfSaveDatabase(databaseName) &&
     databaseName.includes(gameId)
   ) {
     await deleteDatabase(factory, physicalName);
@@ -220,8 +229,8 @@ export async function clearAllGameIndexedDbSaves(
   factory: IDBFactory = window.indexedDB,
 ): Promise<void> {
   const names = trackedDatabaseNames(storage);
-  names.add("localforage");
-  names.add("_C2SaveStates");
+  names.add(RPG_MAKER_SAVE_DATABASE);
+  names.add(CONSTRUCT2_SAVE_DATABASE);
 
   const enumerate = (factory as DatabaseInfoFactory).databases;
   if (typeof enumerate === "function") {
@@ -229,9 +238,9 @@ export async function clearAllGameIndexedDbSaves(
       for (const database of await enumerate.call(factory)) {
         if (
           database.name?.startsWith(INDEXED_DB_SCOPE_PREFIX) ||
-          database.name?.endsWith("-Save") ||
-          database.name === "localforage" ||
-          database.name === "_C2SaveStates"
+          (database.name && isWolfSaveDatabase(database.name)) ||
+          (database.name && isRpgMakerSaveDatabase(database.name)) ||
+          (database.name && isConstructSaveDatabase(database.name))
         ) {
           names.add(database.name);
         }
