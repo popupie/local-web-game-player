@@ -18,6 +18,7 @@ export default function App() {
         boundSessionGameIds={library.boundSessionGameIds}
         directoryInputRef={directoryInputRef}
         error={library.error}
+        gameEngines={library.gameEngines}
         games={library.games}
         guardAvailable={controller.overlayAvailable}
         notice={library.notice}

@@ -2,7 +2,6 @@ import JSZip from "jszip";
 import {
   LEGACY_SAVE_ARCHIVE_MANIFEST_PATH,
   SAVE_ARCHIVE_MANIFEST_PATH,
-  indexedDbNamesForGame,
 } from "@/src/lib/saveExport";
 import {
   VFS_BINARY_PREFIX,
@@ -18,11 +17,6 @@ import {
 import { storageNamespace } from "@/src/lib/keys";
 import { normalizeStoredPath } from "@/src/lib/paths";
 import { cocosIndexedDbWritesForImport } from "@/src/engines/cocos/save";
-import {
-  constructIndexedDbWriteForImport,
-  constructSlotForImportPath,
-  isConstructSaveDatabase,
-} from "@/src/engines/construct2/save";
 import { detectGameEngine } from "@/src/engines/detect";
 import {
   RPG_MAKER_SAVE_DATABASE,
@@ -31,12 +25,6 @@ import {
   rpgMakerLocalStorageKeyForImport,
 } from "@/src/engines/rpgmaker_mvmz/save";
 import { tyranoLocalStorageEntryForImport } from "@/src/engines/tyrano/save";
-import {
-  deriveWolfDatabaseName,
-  isWolfSaveDatabase,
-  wolfIndexedDbWritesForImport,
-  wolfSaveRelativePath,
-} from "@/src/engines/wolf/save";
 import type {
   GameEngine,
   IndexedDbWrite,
@@ -497,10 +485,7 @@ function importPathForEngine(
   entry: LoadedSaveEntry,
 ): string {
   if (!entry.singleFile) return entry.path;
-  if (engine === "wolf") return `Save/${entry.path}`;
-  if (engine === "rpg-maker" || engine === "construct-2") {
-    return `save/${entry.path}`;
-  }
+  if (engine === "rpg-maker") return `save/${entry.path}`;
   return entry.path;
 }
 
@@ -551,34 +536,6 @@ function indexedDbTargetFromPath(
     store: decodePathSegment(match[2]),
     key: { type: "string", value: decodePathSegment(match[3]) },
   };
-}
-
-async function wolfDatabaseName(
-  gameId: string,
-  factory: IDBFactory,
-  storage: Storage,
-  targetDatabase?: string,
-): Promise<string> {
-  const names = await indexedDbNamesForGame(
-    gameId,
-    "wolf",
-    storage,
-    factory,
-  );
-  const existing = names.find((name) => name.includes(gameId));
-  if (existing) return existing;
-  if (
-    targetDatabase?.includes(gameId) &&
-    isWolfSaveDatabase(targetDatabase)
-  ) {
-    return targetDatabase;
-  }
-  const transferableTarget =
-    /^\/data0\/[0-9a-f-]{36}(_.+-Save)$/iu.exec(targetDatabase ?? "");
-  if (transferableTarget) {
-    return `/data0/${gameId}${transferableTarget[1]}`;
-  }
-  return deriveWolfDatabaseName(gameId);
 }
 
 function storeSpecSatisfied(db: IDBDatabase, spec: StoreSpec): boolean {
@@ -835,17 +792,15 @@ function genericWrite(
   };
 }
 
-async function collectImportWrites(
+function collectImportWrites(
   game: GameRecord,
   engine: GameEngine,
   entries: LoadedSaveEntry[],
-  factory: IDBFactory,
   storage: Storage,
-): Promise<IndexedDbWrite[]> {
+): IndexedDbWrite[] {
   const prefix = storageNamespace(game.id);
   const indexedDbWrites: IndexedDbWrite[] = [];
   const cocosDirectoryKeys = new Set<string>();
-  let resolvedWolfDatabase: string | undefined;
 
   for (const entry of entries) {
     const importPath = importPathForEngine(engine, entry);
@@ -870,18 +825,6 @@ async function collectImportWrites(
             value: textFromBytes(entry.bytes),
           });
         }
-      }
-      const localConstructSlot =
-        engine === "construct-2"
-          ? constructSlotForImportPath(importPath)
-          : undefined;
-      if (localConstructSlot) {
-        indexedDbWrites.push(
-          constructIndexedDbWriteForImport(
-            localConstructSlot,
-            textFromBytes(entry.bytes),
-          ),
-        );
       }
       continue;
     }
@@ -924,46 +867,6 @@ async function collectImportWrites(
       exactTarget?.kind === "indexeddb"
         ? exactTarget
         : indexedDbTargetFromPath(importPath);
-    const wolfPath = wolfSaveRelativePath(importPath);
-    const isWolfEntry =
-      engine === "wolf" &&
-      (wolfPath ||
-        (indexedTarget &&
-          isWolfSaveDatabase(indexedTarget.database) &&
-          indexedTarget.store === "FILE_DATA"));
-    if (isWolfEntry) {
-      const relativePath = wolfPath ?? wolfSaveRelativePath(String(
-        indexedTarget && deserializeIndexedDbKey(indexedTarget.key),
-      ));
-      if (!relativePath) throw new Error(`Invalid WOLF save path: ${importPath}`);
-      resolvedWolfDatabase ??= await wolfDatabaseName(
-        game.id,
-        factory,
-        storage,
-        indexedTarget?.database,
-      );
-      indexedDbWrites.push(
-        ...wolfIndexedDbWritesForImport(
-          resolvedWolfDatabase,
-          relativePath,
-          entry.bytes,
-        ),
-      );
-      continue;
-    }
-
-    if (
-      indexedTarget &&
-      isConstructSaveDatabase(indexedTarget.database) &&
-      indexedTarget.store === "saves"
-    ) {
-      const slot = String(deserializeIndexedDbKey(indexedTarget.key));
-      indexedDbWrites.push(
-        constructIndexedDbWriteForImport(slot, textFromBytes(entry.bytes)),
-      );
-      storage.setItem(`${prefix}__c2save_${slot}`, textFromBytes(entry.bytes));
-      continue;
-    }
 
     if (
       indexedTarget &&
@@ -1037,17 +940,6 @@ async function collectImportWrites(
       continue;
     }
 
-    const slot =
-      engine === "construct-2"
-        ? constructSlotForImportPath(importPath)
-        : undefined;
-    if (slot) {
-      const data = textFromBytes(entry.bytes);
-      indexedDbWrites.push(constructIndexedDbWriteForImport(slot, data));
-      storage.setItem(`${prefix}__c2save_${slot}`, data);
-      continue;
-    }
-
     storeVirtualFile(game.id, importPath, entry.bytes, entry.dataType, storage);
   }
 
@@ -1074,12 +966,17 @@ async function importLoadedSaves(
   } catch {
     // A valid backup manifest still provides a safe fallback classification.
   }
+  if (engine === "wolf") {
+    throw new Error("WOLF RPG save import is not supported yet.");
+  }
+  if (engine === "construct-2") {
+    throw new Error("Construct 2 save import is not supported yet.");
+  }
   const bufferedStorage = new BufferedStorage(storage);
-  const indexedDbWrites = await collectImportWrites(
+  const indexedDbWrites = collectImportWrites(
     game,
     engine,
     entries,
-    factory,
     bufferedStorage,
   );
   const collisionCount =

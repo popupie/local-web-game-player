@@ -493,6 +493,12 @@ progress::-moz-progress-bar {
   background: rgba(248, 250, 252, 0.08);
 }
 
+.game-actions-menu .game-action-button:disabled,
+.game-actions-menu .game-action-button:disabled:hover {
+  border-color: transparent;
+  background: transparent;
+}
+
 .game-action-button .icon {
   width: 14px;
   height: 14px;

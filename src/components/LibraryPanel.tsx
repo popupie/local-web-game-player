@@ -1,4 +1,5 @@
 import type { ChangeEvent, KeyboardEvent, RefObject } from "react";
+import type { GameEngine } from "@/src/engines/types";
 import { formatBytes } from "@/src/lib/format";
 import type {
   DictionaryDismissGuard,
@@ -16,6 +17,7 @@ interface LibraryPanelProps {
   boundSessionGameIds: Set<string>;
   directoryInputRef: RefObject<HTMLInputElement | null>;
   error: string | null;
+  gameEngines: Record<string, GameEngine>;
   games: GameRecord[];
   guardAvailable: boolean;
   notice: string | null;
@@ -48,6 +50,7 @@ export function LibraryPanel({
   boundSessionGameIds,
   directoryInputRef,
   error,
+  gameEngines,
   games,
   guardAvailable,
   notice,
@@ -172,6 +175,7 @@ export function LibraryPanel({
             key={game.id}
             active={game.id === activeGame?.id}
             boundSession={boundSessionGameIds.has(game.id)}
+            engine={gameEngines[game.id]}
             game={game}
             onDelete={removeGame}
             onDownloadSaves={downloadSaves}

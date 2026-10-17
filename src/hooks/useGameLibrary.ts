@@ -1,5 +1,11 @@
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import {
+  saveImportUnavailableReason,
+  supportsSaveImport,
+} from "@/src/engines/capabilities";
+import { detectGameEngine } from "@/src/engines/detect";
+import type { GameEngine } from "@/src/engines/types";
+import {
   bindSessionFolderCandidate,
   candidateFromDirectoryHandle,
   candidateFromFolder,
@@ -79,6 +85,9 @@ function waitForNextPaint(): Promise<void> {
 
 export function useGameLibrary(onImportStart?: () => void) {
   const [games, setGames] = useState<GameRecord[]>([]);
+  const [gameEngines, setGameEngines] = useState<
+    Record<string, GameEngine>
+  >({});
   const [activeGameId, setActiveGameId] = useState<string | null>(null);
   const [progress, setProgress] = useState<ImportProgress>(idleProgress);
   const [error, setError] = useState<string | null>(null);
@@ -149,6 +158,16 @@ export function useGameLibrary(onImportStart?: () => void) {
       settings: normalizePlayerSettings(game.settings),
     }));
     setGames(nextGames);
+    const engineEntries = await Promise.all(
+      nextGames.map(async (game) => {
+        try {
+          return [game.id, await detectGameEngine(game.id)] as const;
+        } catch {
+          return [game.id, "unknown"] as const;
+        }
+      }),
+    );
+    setGameEngines(Object.fromEntries(engineEntries));
     setStorage(await estimateStorage());
     if (nextActiveId) {
       setActiveGameId(nextActiveId);
@@ -321,6 +340,11 @@ export function useGameLibrary(onImportStart?: () => void) {
       clearServiceWorkerGameCache(game.id);
       const remaining = games.filter((item) => item.id !== game.id);
       setGames(remaining);
+      setGameEngines((engines) => {
+        const next = { ...engines };
+        delete next[game.id];
+        return next;
+      });
       setActiveGameId(remaining[0]?.id ?? null);
       setStorage(await estimateStorage());
     } catch (cause) {
@@ -348,6 +372,7 @@ export function useGameLibrary(onImportStart?: () => void) {
       clearAllGameStorageNamespaces();
       clearAllSessionFolders();
       setGames([]);
+      setGameEngines({});
       setStorage(await estimateStorageAfterMutation(previousStorage));
       setNotice("Storage cleared.");
     } catch (cause) {
@@ -414,6 +439,13 @@ export function useGameLibrary(onImportStart?: () => void) {
     setError(null);
     setNotice(null);
     try {
+      const engine =
+        gameEngines[game.id] ?? (await detectGameEngine(game.id));
+      if (!supportsSaveImport(engine)) {
+        setError(saveImportUnavailableReason(engine));
+        return;
+      }
+      setGameEngines((engines) => ({ ...engines, [game.id]: engine }));
       const isFolder =
         files.length > 1 ||
         files.some((file) =>
@@ -474,6 +506,7 @@ export function useGameLibrary(onImportStart?: () => void) {
     activeGameId,
     boundSessionGameIds,
     error,
+    gameEngines,
     games,
     notice,
     canUseLocalFolderAccess: supportsLocalFolderAccess(),

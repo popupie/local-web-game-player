@@ -7,6 +7,11 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import {
+  saveImportUnavailableReason,
+  supportsSaveImport,
+} from "@/src/engines/capabilities";
+import type { GameEngine } from "@/src/engines/types";
 import { formatBytes } from "@/src/lib/format";
 import type { GameRecord } from "@/src/lib/types";
 import { Icon } from "@/src/components/Icon";
@@ -14,6 +19,7 @@ import { Icon } from "@/src/components/Icon";
 interface GameCardProps {
   active: boolean;
   boundSession: boolean;
+  engine?: GameEngine;
   game: GameRecord;
   onDelete: (game: GameRecord) => void;
   onDownloadSaves: (game: GameRecord) => void;
@@ -44,6 +50,7 @@ function detailsLabel(game: GameRecord, boundSession: boolean): string {
 export function GameCard({
   active,
   boundSession,
+  engine,
   game,
   onBindSessionFolder,
   onDelete,
@@ -66,6 +73,8 @@ export function GameCard({
   const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 });
   const canBindSession = game.sourceKind === "session-folder";
   const unboundSession = canBindSession && !boundSession;
+  const canImportSaves = supportsSaveImport(engine);
+  const importUnavailableReason = saveImportUnavailableReason(engine);
   const className = [
     "game-card",
     active ? "active" : "",
@@ -132,12 +141,12 @@ export function GameCard({
   const handleSaveFolder = (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
     event.target.value = "";
-    if (files.length > 0) onImportSaves(game, files);
+    if (canImportSaves && files.length > 0) onImportSaves(game, files);
   };
   const handleSaveFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (file) onImportSaves(game, [file]);
+    if (canImportSaves && file) onImportSaves(game, [file]);
   };
 
   useEffect(() => {
@@ -218,21 +227,25 @@ export function GameCard({
 
               <div
                 className="game-import-action"
-                onMouseEnter={() => setImportChoicesVisible(true)}
+                onMouseEnter={() => {
+                  if (canImportSaves) setImportChoicesVisible(true);
+                }}
                 onMouseLeave={() => setImportChoicesVisible(false)}
               >
                 <button
                   type="button"
                   className="game-action-button has-submenu"
+                  disabled={!canImportSaves}
+                  title={canImportSaves ? "Import save" : importUnavailableReason}
                   aria-haspopup="menu"
-                  aria-expanded={importChoicesVisible}
+                  aria-expanded={canImportSaves && importChoicesVisible}
                   onClick={() => setImportChoicesVisible(true)}
                   onFocus={() => setImportChoicesVisible(true)}
                 >
                   <Icon name="upload" />
                   <span>Import save</span>
                 </button>
-                {importChoicesVisible && (
+                {canImportSaves && importChoicesVisible && (
                   <div
                     className={`game-import-submenu${
                       importSubmenuLeft ? " open-left" : ""
@@ -285,6 +298,7 @@ export function GameCard({
         className="hidden-input"
         type="file"
         multiple
+        disabled={!canImportSaves}
         aria-label={`Import save folder for ${game.title}`}
         onChange={handleSaveFolder}
         {...{ webkitdirectory: "" }}
@@ -293,6 +307,7 @@ export function GameCard({
         ref={saveFileInputRef}
         className="hidden-input"
         type="file"
+        disabled={!canImportSaves}
         aria-label={`Import a save file or ZIP for ${game.title}`}
         onChange={handleSaveFile}
       />
