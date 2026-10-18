@@ -493,6 +493,12 @@ progress::-moz-progress-bar {
   background: rgba(248, 250, 252, 0.08);
 }
 
+.game-actions-menu .game-action-button:disabled,
+.game-actions-menu .game-action-button:disabled:hover {
+  border-color: transparent;
+  background: transparent;
+}
+
 .game-action-button .icon {
   width: 14px;
   height: 14px;
@@ -503,8 +509,55 @@ progress::-moz-progress-bar {
   color: inherit;
 }
 
+.game-actions-menu .game-action-button.has-submenu {
+  grid-template-columns: 18px minmax(0, 1fr) 8px;
+}
+
+.game-action-button.has-submenu::after {
+  color: #94a3b8;
+  content: "›";
+  font-size: 15px;
+  line-height: 1;
+}
+
 .game-actions-menu .game-action-button.danger {
   color: #fca5a5;
+}
+
+.game-import-action {
+  position: relative;
+}
+
+.game-import-submenu {
+  position: absolute;
+  z-index: 1;
+  top: -3px;
+  left: calc(100% + 7px);
+  width: 128px;
+  padding: 3px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 6px;
+  background: var(--color-sidebar-hover);
+  box-shadow: 0 6px 16px rgba(2, 6, 23, 0.22);
+}
+
+.game-import-submenu::before {
+  position: absolute;
+  top: 0;
+  right: 100%;
+  bottom: 0;
+  width: 7px;
+  content: "";
+}
+
+.game-import-submenu.open-left {
+  right: calc(100% + 7px);
+  left: auto;
+}
+
+.game-import-submenu.open-left::before {
+  right: auto;
+  left: 100%;
 }
 
 .storage-meter {

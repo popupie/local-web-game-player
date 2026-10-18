@@ -18,19 +18,20 @@ type WolfAssetResponse = {
   error?: string;
 };
 
-type WolfRuntimeModule = {
-  preRun: Array<(runtimeModule?: WolfRuntimeModule) => void>;
-  canvas?: HTMLCanvasElement;
-};
-
 import { normalizeWolfPath, wolfPathKeys } from "@/player-runtime/engines/wolf/path";
 import { installWolfCompatibility } from "@/player-runtime/engines/wolf/compatibility";
 import type { WolfPlayerSettings } from "@/player-runtime/engines/wolf/compatibility";
+import {
+  installWolfSaveImportBridge,
+  type WolfRuntimeModule,
+} from "@/player-runtime/engines/wolf/saveImport";
+import { trackIndexedDbDatabases } from "@/shared/indexedDbSaveTracking";
 
 declare const Module: WolfRuntimeModule;
 declare const FS: {
   analyzePath(path: string): { exists: boolean };
   mkdir(path: string): void;
+  syncfs(populate: boolean, callback: (error?: unknown) => void): unknown;
   writeFile: (...values: unknown[]) => unknown;
   open: (...values: unknown[]) => unknown;
   stat: (...values: unknown[]) => unknown;
@@ -42,6 +43,11 @@ const config = (window as typeof window & {
 }).__WOLF_PLAYER_CONFIG__;
 const runtimeModule = (window as typeof window & { Module?: WolfRuntimeModule }).Module ?? Module;
 let activeModule: WolfRuntimeModule | undefined;
+
+if (config?.gameId) {
+  trackIndexedDbDatabases(`mz-player:${config.gameId}:`);
+  installWolfSaveImportBridge(config.gameId, runtimeModule, () => FS);
+}
 
 function showStatus(message: string) {
   const target = document.querySelector<HTMLElement>("#touchtostart");

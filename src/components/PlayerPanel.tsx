@@ -112,7 +112,8 @@ export function PlayerPanel({
                 <div className="home-control-cell">
                   <Icon name="download" />
                   <span>
-                    Download saves when you want a backup outside the browser.
+                    Download creates a save ZIP. Import accepts a folder, one
+                    save file, or a ZIP.
                   </span>
                 </div>
                 <div className="home-control-cell">

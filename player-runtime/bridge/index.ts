@@ -1,11 +1,16 @@
 // @ts-nocheck
 
-import { createParentBridge, postParent } from "@/player-runtime/bridge/parentBridge";
+import {
+  createParentBridge,
+  postParent,
+} from "@/player-runtime/bridge/parentBridge";
 import { createSettingsStore } from "@/player-runtime/bridge/settings";
 import { patchLocalStorage } from "@/player-runtime/bridge/storageNamespace";
 import { createTextOverlayBridge } from "@/player-runtime/bridge/overlay";
 import { createViewportBridge } from "@/player-runtime/bridge/viewport";
 import { installRpgMakerEncryptionFallback } from "@/player-runtime/engines/rpgmaker_mvmz/encryption";
+import { installConstruct2SaveImportBridge } from "@/player-runtime/engines/construct2/saveImport";
+import { trackIndexedDbDatabases } from "@/shared/indexedDbSaveTracking";
 
 (() => {
   const config = window.__MZ_PLAYER_BRIDGE__;
@@ -16,7 +21,11 @@ import { installRpgMakerEncryptionFallback } from "@/player-runtime/engines/rpgm
   const postParentMessage = postParent;
   const prefix = `mz-player:${config.gameId}:`;
 
+  trackIndexedDbDatabases(prefix);
   patchLocalStorage(prefix);
+  if (config.engine === "construct-2") {
+    installConstruct2SaveImportBridge(config.gameId);
+  }
 
   const overlay = createTextOverlayBridge({
     config,

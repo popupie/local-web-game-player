@@ -1,8 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  createWolfAssetObjectUrls,
-  type WolfAssetObjectUrlSet,
-} from "@/src/lib/wolfAssets";
+import { useEffect, useState } from "react";
+import { useWolfAssets } from "@/src/engines/wolf/useWolfAssets";
 import type { PlayerToParentMessage } from "@/src/lib/types";
 import { useGameControls } from "@/src/hooks/useGameControls";
 import { useGameLibrary } from "@/src/hooks/useGameLibrary";
@@ -18,13 +15,13 @@ export function usePlayerController() {
     gameId: string;
     available: boolean;
   } | null>(null);
-  const wolfAssetsRef = useRef<{
-    key: string;
-    promise: Promise<WolfAssetObjectUrlSet>;
-  } | undefined>(undefined);
-
   const library = useGameLibrary(() => setRuntimeError(null));
   const player = usePlayerFrame(library.activeGame?.id);
+  const respondWithWolfAssets = useWolfAssets({
+    game: library.activeGame,
+    frameRef: player.frameRef,
+    onError: setRuntimeError,
+  });
   const textLog = useTextLog(textLogLimit);
   const overlayAvailable = Boolean(
     library.activeGame &&
@@ -39,63 +36,6 @@ export function usePlayerController() {
         )
       : 0;
   const controls = useGameControls({ library, overlayAvailable, player });
-
-  function wolfAssetsForActiveGame(): Promise<WolfAssetObjectUrlSet> {
-    const game = library.activeGame;
-    if (!game) return Promise.reject(new Error("No WOLF game is active."));
-
-    // Woditor can request a new asset long after startup. A settings update must
-    // not revoke the active iframe's URLs while the game is still running.
-    const current = wolfAssetsRef.current;
-    if (current?.key === game.id) return current.promise;
-    if (current) {
-      void current.promise.then((value) => value.release(), () => undefined);
-    }
-
-    const promise = createWolfAssetObjectUrls(game.id);
-    wolfAssetsRef.current = { key: game.id, promise };
-    return promise;
-  }
-
-  async function respondWithWolfAssets(
-    event: MessageEvent<PlayerToParentMessage>,
-    message: Extract<PlayerToParentMessage, { type: "wolf-assets-request" }>,
-  ) {
-    const game = library.activeGame;
-    if (
-      !game ||
-      message.gameId !== game.id ||
-      event.source !== player.frameRef.current?.contentWindow
-    ) {
-      return;
-    }
-
-    try {
-      const value = await wolfAssetsForActiveGame();
-      (event.source as Window).postMessage(
-        {
-          type: "wolf-assets-response",
-          requestId: message.requestId,
-          assets: value.assets,
-        },
-        window.location.origin,
-      );
-    } catch (cause) {
-      const error =
-        cause instanceof Error
-          ? cause.message
-          : "Could not prepare WOLF assets.";
-      setRuntimeError(error);
-      (event.source as Window).postMessage(
-        {
-          type: "wolf-assets-response",
-          requestId: message.requestId,
-          error,
-        },
-        window.location.origin,
-      );
-    }
-  }
 
   useEffect(() => {
     const onMessage = (event: MessageEvent<PlayerToParentMessage>) => {
@@ -167,16 +107,6 @@ export function usePlayerController() {
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [library.activeGame]);
-
-  useEffect(
-    () => () => {
-      const current = wolfAssetsRef.current;
-      if (current) {
-        void current.promise.then((value) => value.release(), () => undefined);
-      }
-    },
-    [],
-  );
 
   return {
     ...controls,

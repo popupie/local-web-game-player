@@ -1,5 +1,11 @@
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import {
+  saveImportUnavailableReason,
+  supportsSaveImport,
+} from "@/src/engines/capabilities";
+import { detectGameEngine } from "@/src/engines/detect";
+import type { GameEngine } from "@/src/engines/types";
+import {
   bindSessionFolderCandidate,
   candidateFromDirectoryHandle,
   candidateFromFolder,
@@ -28,6 +34,11 @@ import {
   listenForSessionFileRequests,
 } from "@/src/lib/playerCache";
 import { downloadSaveZip } from "@/src/lib/saveExport";
+import {
+  clearAllGameIndexedDbSaves,
+  clearGameIndexedDbSaves,
+} from "@/src/lib/saveCleanup";
+import { importSaveFile, importSaveFolder } from "@/src/lib/saveImport";
 import { registerPlayerServiceWorker } from "@/src/lib/serviceWorker";
 import {
   clearAllSessionFolders,
@@ -47,7 +58,11 @@ import {
   estimateStorageAfterMutation,
   importErrorMessage,
 } from "@/src/lib/storageQuota";
-import type { GameRecord, ImportCandidate, ImportProgress } from "@/src/lib/types";
+import type {
+  GameRecord,
+  ImportCandidate,
+  ImportProgress,
+} from "@/src/lib/types";
 
 const idleProgress: ImportProgress = {
   phase: "idle",
@@ -70,6 +85,9 @@ function waitForNextPaint(): Promise<void> {
 
 export function useGameLibrary(onImportStart?: () => void) {
   const [games, setGames] = useState<GameRecord[]>([]);
+  const [gameEngines, setGameEngines] = useState<
+    Record<string, GameEngine>
+  >({});
   const [activeGameId, setActiveGameId] = useState<string | null>(null);
   const [progress, setProgress] = useState<ImportProgress>(idleProgress);
   const [error, setError] = useState<string | null>(null);
@@ -140,6 +158,16 @@ export function useGameLibrary(onImportStart?: () => void) {
       settings: normalizePlayerSettings(game.settings),
     }));
     setGames(nextGames);
+    const engineEntries = await Promise.all(
+      nextGames.map(async (game) => {
+        try {
+          return [game.id, await detectGameEngine(game.id)] as const;
+        } catch {
+          return [game.id, "unknown"] as const;
+        }
+      }),
+    );
+    setGameEngines(Object.fromEntries(engineEntries));
     setStorage(await estimateStorage());
     if (nextActiveId) {
       setActiveGameId(nextActiveId);
@@ -166,7 +194,10 @@ export function useGameLibrary(onImportStart?: () => void) {
         total: 1,
       });
       await waitForNextPaint();
-      const candidate = await candidateFromFolder(files, selectedFolderName(input, files));
+      const candidate = await candidateFromFolder(
+        files,
+        selectedFolderName(input, files),
+      );
       const game = await importSessionFolderCandidate(candidate, setProgress);
       registerSessionFolder(game.id, candidate.files);
       clearServiceWorkerGameCache(game.id);
@@ -297,14 +328,30 @@ export function useGameLibrary(onImportStart?: () => void) {
   async function removeGame(game: GameRecord) {
     setError(null);
     setNotice(null);
-    await deleteGame(game.id);
-    clearGameStorageNamespace(game.id);
-    clearSessionFolder(game.id);
-    clearServiceWorkerGameCache(game.id);
-    const remaining = games.filter((item) => item.id !== game.id);
-    setGames(remaining);
-    setActiveGameId(remaining[0]?.id ?? null);
-    setStorage(await estimateStorage());
+    try {
+      if (activeGameId === game.id) {
+        setActiveGameId(null);
+        await waitForNextPaint();
+      }
+      await clearGameIndexedDbSaves(game);
+      await deleteGame(game.id);
+      clearGameStorageNamespace(game.id);
+      clearSessionFolder(game.id);
+      clearServiceWorkerGameCache(game.id);
+      const remaining = games.filter((item) => item.id !== game.id);
+      setGames(remaining);
+      setGameEngines((engines) => {
+        const next = { ...engines };
+        delete next[game.id];
+        return next;
+      });
+      setActiveGameId(remaining[0]?.id ?? null);
+      setStorage(await estimateStorage());
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Game removal failed.",
+      );
+    }
   }
 
   async function clearStorage() {
@@ -317,16 +364,21 @@ export function useGameLibrary(onImportStart?: () => void) {
     setError(null);
     setNotice(null);
     try {
+      setActiveGameId(null);
+      await waitForNextPaint();
       await clearServiceWorkerPlayerCache();
+      await clearAllGameIndexedDbSaves();
       await clearPlayerStorage();
       clearAllGameStorageNamespaces();
       clearAllSessionFolders();
       setGames([]);
-      setActiveGameId(null);
+      setGameEngines({});
       setStorage(await estimateStorageAfterMutation(previousStorage));
       setNotice("Storage cleared.");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Storage clear failed.");
+      setError(
+        cause instanceof Error ? cause.message : "Storage clear failed.",
+      );
     }
   }
 
@@ -383,6 +435,60 @@ export function useGameLibrary(onImportStart?: () => void) {
     }
   }
 
+  async function importSaves(
+    game: GameRecord,
+    files: File[],
+    runtimeFrame?: HTMLIFrameElement,
+  ) {
+    setError(null);
+    setNotice(null);
+    try {
+      const engine =
+        gameEngines[game.id] ?? (await detectGameEngine(game.id));
+      if (!supportsSaveImport(engine)) {
+        setError(saveImportUnavailableReason(engine));
+        return;
+      }
+      setGameEngines((engines) => ({ ...engines, [game.id]: engine }));
+      const isFolder =
+        files.length > 1 ||
+        files.some((file) =>
+          Boolean(
+            (file as File & { webkitRelativePath?: string }).webkitRelativePath,
+          ),
+        );
+      const importOptions = {
+        beforeCommit: async () => {
+          if (activeGameId !== game.id) return;
+          setActiveGameId(null);
+          await waitForNextPaint();
+        },
+        confirmOverwrite: (collisionCount: number) =>
+          window.confirm(
+            `${collisionCount} existing save ${
+              collisionCount === 1 ? "entry" : "entries"
+            } for ${game.title} will be overwritten. Continue?`,
+          ),
+        runtimeFrame,
+      };
+      const result = isFolder
+        ? await importSaveFolder(game, files, importOptions)
+        : await importSaveFile(game, files[0], importOptions);
+      if (result.cancelled) {
+        setNotice("Save import cancelled.");
+        return;
+      }
+      clearServiceWorkerGameCache(game.id);
+      setStorage(await estimateStorage());
+      const label = result.importedEntries === 1 ? "save file" : "save files";
+      setNotice(
+        `Imported ${result.importedEntries} ${label} into ${game.title}.`,
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Save import failed.");
+    }
+  }
+
   async function saveGameSettings(
     game: GameRecord,
     patch: Partial<GameRecord["settings"]>,
@@ -405,6 +511,7 @@ export function useGameLibrary(onImportStart?: () => void) {
     activeGameId,
     boundSessionGameIds,
     error,
+    gameEngines,
     games,
     notice,
     canUseLocalFolderAccess: supportsLocalFolderAccess(),
@@ -413,6 +520,7 @@ export function useGameLibrary(onImportStart?: () => void) {
     openLocalFolder,
     progress,
     downloadSaves,
+    importSaves,
     removeGame,
     clearStorage,
     bindSessionFolder,
