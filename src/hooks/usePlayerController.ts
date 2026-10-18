@@ -74,6 +74,12 @@ export function usePlayerController() {
         setRuntimeError(message.message);
       }
       if (
+        message.type === "game-title" &&
+        message.gameId === library.activeGame?.id
+      ) {
+        void library.updateGameTitle(message.gameId, message.title);
+      }
+      if (
         message.type === "game-viewport" &&
         message.width > 0 &&
         message.height > 0

@@ -74,6 +74,7 @@ export type PlayerToParentMessage =
   | { type: "overlay-availability"; gameId: string; available: boolean }
   | { type: "overlay-status"; overlayEnabled: boolean; readerMode: boolean }
   | { type: "game-viewport"; width: number; height: number }
+  | { type: "game-title"; gameId: string; title: string }
   | { type: "return-focus" }
   | { type: "text-log"; gameId: string; text: string; at: number }
   | { type: "runtime-error"; message: string; stack?: string }

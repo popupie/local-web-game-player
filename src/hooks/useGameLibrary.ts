@@ -13,6 +13,7 @@ import {
   importCandidate,
   importLocalFolderCandidate,
   importSessionFolderCandidate,
+  isPlaceholderGameTitle,
 } from "@/src/lib/importer";
 import {
   chooseWebkitFolder,
@@ -51,6 +52,7 @@ import {
   deleteGame,
   estimateStorage,
   getAllGames,
+  putGame,
   updateGameSettings,
 } from "@/src/lib/storage";
 import {
@@ -405,7 +407,10 @@ export function useGameLibrary(onImportStart?: () => void) {
       });
       await waitForNextPaint();
       const candidate = await candidateFromFolder(files, folderName);
-      if (candidate.title !== game.title) {
+      if (
+        candidate.title !== game.title &&
+        !isPlaceholderGameTitle(game.title)
+      ) {
         throw new Error(`Game mismatch.`);
       }
       const updated = await bindSessionFolderCandidate(
@@ -506,6 +511,29 @@ export function useGameLibrary(onImportStart?: () => void) {
     return updated;
   }
 
+  async function updateGameTitle(gameId: string, title: string): Promise<void> {
+    const normalizedTitle = title.replace(/\s+/gu, " ").trim();
+    const game = games.find((item) => item.id === gameId);
+    if (
+      !game ||
+      !normalizedTitle ||
+      isPlaceholderGameTitle(normalizedTitle) ||
+      game.title === normalizedTitle
+    ) {
+      return;
+    }
+
+    const updated: GameRecord = {
+      ...game,
+      title: normalizedTitle,
+      updatedAt: new Date().toISOString(),
+    };
+    setGames((items) =>
+      items.map((item) => (item.id === updated.id ? updated : item)),
+    );
+    await putGame(updated);
+  }
+
   return {
     activeGame,
     activeGameId,
@@ -525,6 +553,7 @@ export function useGameLibrary(onImportStart?: () => void) {
     clearStorage,
     bindSessionFolder,
     saveGameSettings,
+    updateGameTitle,
     setActiveGameId: selectGame,
     setError,
     setNotice,

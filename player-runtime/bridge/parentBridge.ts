@@ -10,7 +10,7 @@ export function postParent(message) {
   }
 }
 
-export function createParentBridge({ gameId, overlay, postParentMessage, settings, viewport }) {
+export function createParentBridge({ engine, gameId, overlay, postParentMessage, settings, viewport }) {
   function installReservedKeys() {
     window.addEventListener("keydown", handleReservedKeyEvent, true);
   }
@@ -93,6 +93,25 @@ export function createParentBridge({ gameId, overlay, postParentMessage, setting
     });
   }
 
+  function installGameTitleBridge() {
+    if (engine !== "tyrano") return;
+
+    let observer;
+    const postRealTitle = () => {
+      const title = String(document.title || "").replace(/\s+/gu, " ").trim();
+      if (!title || title.toLowerCase() === "loading tyranoscript") return;
+      observer?.disconnect();
+      postParentMessage({ type: "game-title", gameId, title });
+    };
+    observer = new MutationObserver(postRealTitle);
+    observer.observe(document.documentElement, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+    });
+    postRealTitle();
+  }
+
   function postStatus() {
     postParentMessage({ type: "overlay-availability", gameId, available: true });
     postParentMessage({ type: "overlay-status", overlayEnabled: settings.overlayEnabled, readerMode: settings.readerMode });
@@ -100,6 +119,7 @@ export function createParentBridge({ gameId, overlay, postParentMessage, setting
 
   return {
     installErrorBridge,
+    installGameTitleBridge,
     installMessageBridge,
     installReservedKeys,
     postStatus,

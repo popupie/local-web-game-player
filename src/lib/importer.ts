@@ -44,6 +44,11 @@ const SYSTEM_JSON_PATH_RANKS = new Map([
   ["data/System.json", 0],
   ["www/data/System.json", 1],
 ]);
+const TYRANO_CONFIG_PATH_RANKS = new Map([
+  ["data/system/config.tjs", 0],
+  ["www/data/system/config.tjs", 1],
+]);
+const PLACEHOLDER_HTML_TITLES = new Set(["loading tyranoscript"]);
 const PROJECT_ROOT_PATH_SUFFIXES = [
   { suffix: "data/System.json", trimSegments: 2 },
   { suffix: "www/data/System.json", trimSegments: 3 },
@@ -109,12 +114,41 @@ function gameTitleFromBrowserGameJson(text: string): string {
   }
 }
 
+function tyranoConfigPathRank(path: string): number {
+  const normalized = normalizeStoredPath(path).toLowerCase();
+  const exactRank = TYRANO_CONFIG_PATH_RANKS.get(normalized);
+  if (exactRank !== undefined) return exactRank;
+
+  for (const [suffix, rank] of TYRANO_CONFIG_PATH_RANKS) {
+    if (normalized.endsWith(`/${suffix}`)) return rank + TYRANO_CONFIG_PATH_RANKS.size;
+  }
+
+  return Number.POSITIVE_INFINITY;
+}
+
+function gameTitleFromTyranoConfig(text: string): string {
+  const match = /^\s*;?\s*System\.title\s*=\s*(.*?)\s*$/imu.exec(text.replace(/^\uFEFF/u, ""));
+  if (!match) return "";
+
+  const title = match[1].trim();
+  const quote = title[0];
+  if ((quote === '"' || quote === "'") && title.endsWith(quote)) {
+    return title.slice(1, -1).trim();
+  }
+  return title;
+}
+
 function gameTitleFromHtml(text: string): string {
   const match = /<title[^>]*>([\s\S]*?)<\/title>/iu.exec(text);
-  return match?.[1]
+  const title = match?.[1]
     ?.replace(/<[^>]+>/gu, "")
     .replace(/\s+/gu, " ")
     .trim() ?? "";
+  return isPlaceholderGameTitle(title) ? "" : title;
+}
+
+export function isPlaceholderGameTitle(title: string): boolean {
+  return PLACEHOLDER_HTML_TITLES.has(title.trim().toLowerCase());
 }
 
 async function titleFromSystemJsonEntries<T extends { path: string }>(
@@ -143,6 +177,23 @@ async function titleFromBrowserGameEntries<T extends { path: string }>(
     const title = gameTitleFromBrowserGameJson(await readText(entry));
     if (title) return title;
   }
+  return "";
+}
+
+async function titleFromTyranoConfigEntries<T extends { path: string }>(
+  entries: T[],
+  readText: (entry: T) => Promise<string>,
+): Promise<string> {
+  const candidates = entries
+    .map((entry, index) => ({ entry, index, rank: tyranoConfigPathRank(entry.path) }))
+    .filter((candidate) => Number.isFinite(candidate.rank))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index);
+
+  for (const candidate of candidates) {
+    const title = gameTitleFromTyranoConfig(await readText(candidate.entry));
+    if (title) return title;
+  }
+
   return "";
 }
 
@@ -258,10 +309,11 @@ export async function candidateFromFolder(
   }));
   const systemTitle = await titleFromSystemJsonEntries(normalized, (entry) => entry.file.text());
   const browserGameTitle = await titleFromBrowserGameEntries(normalized, (entry) => entry.file.text());
+  const tyranoTitle = await titleFromTyranoConfigEntries(normalized, (entry) => entry.file.text());
   const htmlTitle = await titleFromHtmlEntries(normalized, (entry) => entry.file.text());
 
   return {
-    title: candidateTitle(systemTitle || browserGameTitle || htmlTitle, paths, fallbackTitle),
+    title: candidateTitle(systemTitle || browserGameTitle || tyranoTitle || htmlTitle, paths, fallbackTitle),
     files: sessionFiles,
     entryPath: findEntryPath(paths),
     totalBytes: sessionFiles.reduce((sum, entry) => sum + entry.size, 0)
@@ -321,6 +373,7 @@ export async function candidateFromDirectoryHandle(
   const entries: LocalFolderCandidate["files"] = [];
   let systemTitle = "";
   let browserGameTitle = "";
+  let tyranoTitle = "";
   for (let index = 0; index < fileEntries.length; index += 1) {
     const entry = fileEntries[index];
     const file = await entry.handle.getFile();
@@ -336,6 +389,9 @@ export async function candidateFromDirectoryHandle(
     if (!browserGameTitle && isBrowserGameManifestPath(entry.path)) {
       browserGameTitle = gameTitleFromBrowserGameJson(await file.text());
     }
+    if (!tyranoTitle && Number.isFinite(tyranoConfigPathRank(entry.path))) {
+      tyranoTitle = gameTitleFromTyranoConfig(await file.text());
+    }
 
     if (shouldReportProgress(index + 1, fileEntries.length, lastReportTime)) {
       lastReportTime = performance.now();
@@ -350,7 +406,7 @@ export async function candidateFromDirectoryHandle(
 
   return {
     title: candidateTitle(
-      systemTitle || browserGameTitle || htmlTitle,
+      systemTitle || browserGameTitle || tyranoTitle || htmlTitle,
       paths,
       directoryHandle.name ?? FALLBACK_GAME_TITLE,
     ),
@@ -366,10 +422,11 @@ export async function candidateFromZip(file: File, onProgress?: ProgressCallback
   const paths = normalized.map((entry) => entry.path);
   const systemTitle = await titleFromSystemJsonEntries(normalized, (entry) => entry.file.text());
   const browserGameTitle = await titleFromBrowserGameEntries(normalized, (entry) => entry.file.text());
+  const tyranoTitle = await titleFromTyranoConfigEntries(normalized, (entry) => entry.file.text());
   const htmlTitle = await titleFromHtmlEntries(normalized, (entry) => entry.file.text());
 
   return {
-    title: candidateTitle(systemTitle || browserGameTitle || htmlTitle, paths, file.name),
+    title: candidateTitle(systemTitle || browserGameTitle || tyranoTitle || htmlTitle, paths, file.name),
     files: normalized,
     entryPath: findEntryPath(paths),
     totalBytes: normalized.reduce((sum, entry) => sum + entry.file.size, 0)

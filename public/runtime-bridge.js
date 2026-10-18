@@ -33,7 +33,7 @@
       window.parent.postMessage(message, "*");
     }
   }
-  function createParentBridge({ gameId, overlay, postParentMessage, settings, viewport }) {
+  function createParentBridge({ engine, gameId, overlay, postParentMessage, settings, viewport }) {
     function installReservedKeys() {
       window.addEventListener("keydown", handleReservedKeyEvent, true);
     }
@@ -102,12 +102,30 @@
         postParentMessage({ type: "runtime-error", message: String(reason.message || reason || "Unhandled rejection"), stack: reason.stack });
       });
     }
+    function installGameTitleBridge() {
+      if (engine !== "tyrano") return;
+      let observer;
+      const postRealTitle = () => {
+        const title = String(document.title || "").replace(/\s+/gu, " ").trim();
+        if (!title || title.toLowerCase() === "loading tyranoscript") return;
+        observer?.disconnect();
+        postParentMessage({ type: "game-title", gameId, title });
+      };
+      observer = new MutationObserver(postRealTitle);
+      observer.observe(document.documentElement, {
+        subtree: true,
+        childList: true,
+        characterData: true
+      });
+      postRealTitle();
+    }
     function postStatus() {
       postParentMessage({ type: "overlay-availability", gameId, available: true });
       postParentMessage({ type: "overlay-status", overlayEnabled: settings.overlayEnabled, readerMode: settings.readerMode });
     }
     return {
       installErrorBridge,
+      installGameTitleBridge,
       installMessageBridge,
       installReservedKeys,
       postStatus
@@ -3843,6 +3861,7 @@
       scheduleFlush: overlay.scheduleFlush
     });
     const parent = createParentBridge({
+      engine: config.engine,
       gameId: config.gameId,
       overlay,
       postParentMessage,
@@ -3852,6 +3871,7 @@
     parent.installReservedKeys();
     parent.installMessageBridge();
     parent.installErrorBridge();
+    parent.installGameTitleBridge();
     viewport.installViewportBridge();
     installRpgMakerEncryptionFallback();
     overlay.ensureOverlayDom();

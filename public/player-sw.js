@@ -6,7 +6,7 @@ const BLOB_STORE = "blobs";
 const HANDLE_STORE = "handles";
 
 const PLAYER_DESKTOP_RUNTIME_VERSION = "desktop-api-10";
-const PLAYER_BRIDGE_RUNTIME_VERSION = "bridge-api-18";
+const PLAYER_BRIDGE_RUNTIME_VERSION = "bridge-api-19";
 const PLAYER_WOLF_RUNTIME_VERSION = "wolf-compat-14";
 const SESSION_FILE_TIMEOUT_MS = 10000;
 const EMPTY_SOURCE_MAP_TEXT = '{"version":3,"sources":[],"mappings":""}';
@@ -1163,12 +1163,12 @@ function adaptWolfHtml(html, game, looseAssets) {
 
 function injectBridge(html, game, files) {
   const isConstruct2 = isConstruct2Game(files);
+  const isTyrano = isTyranoGame(files);
   const bridgeConfig = `<script>window.__MZ_PLAYER_BRIDGE__=${jsonForScript({
     gameId: game.id,
-    engine: isConstruct2 ? "construct-2" : undefined,
+    engine: isConstruct2 ? "construct-2" : isTyrano ? "tyrano" : undefined,
     settings: game.settings,
   })};</script>`;
-  const isTyrano = isTyranoGame(files);
   const isWolfRpg = isWolfRpgGame(files);
   const preparedHtml = isWolfRpg
     ? adaptWolfHtml(html, game, isLooseWolfRpgGame(files))

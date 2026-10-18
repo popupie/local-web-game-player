@@ -37,6 +37,7 @@ import { trackIndexedDbDatabases } from "@/shared/indexedDbSaveTracking";
     scheduleFlush: overlay.scheduleFlush,
   });
   const parent = createParentBridge({
+    engine: config.engine,
     gameId: config.gameId,
     overlay,
     postParentMessage,
@@ -47,6 +48,7 @@ import { trackIndexedDbDatabases } from "@/shared/indexedDbSaveTracking";
   parent.installReservedKeys();
   parent.installMessageBridge();
   parent.installErrorBridge();
+  parent.installGameTitleBridge();
   viewport.installViewportBridge();
   installRpgMakerEncryptionFallback();
   overlay.ensureOverlayDom();
