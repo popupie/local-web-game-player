@@ -64,12 +64,7 @@ export function createTyranoOverlayAdapter({
           continue;
         }
         for (const paragraph of paragraphs) {
-          const styledSpans = paragraph.querySelectorAll(":scope > span");
-          if (styledSpans.length) {
-            for (const span of styledSpans) sources.add(span);
-          } else {
-            sources.add(paragraph);
-          }
+          sources.add(paragraph);
         }
       }
       for (const source of root.querySelectorAll(
@@ -81,56 +76,32 @@ export function createTyranoOverlayAdapter({
 
     const activeKeys = new Set();
     for (const source of sources) {
-      const text = tyranoSourceText(source);
-      if (!text || !domSourceIsVisible(source)) continue;
+      if (!domSourceIsVisible(source)) continue;
 
-      const key = `tyrano:${domSourceId(source)}`;
-      const style = getComputedStyle(source);
-      const scale = domVisualScale(source);
-      activeKeys.add(key);
-      upsertEntry(key, {
-        domSource: source,
-        text,
-        fontSize: parseCssNumber(style.fontSize) || 24,
-        fontFace: fontFamilyWithEmojiFallback(style.fontFamily || "sans-serif"),
-        fontStyle: style.fontStyle,
-        fontWeight: style.fontWeight,
-        fontStretch: style.fontStretch,
-        fontVariant: style.fontVariant,
-        fontKerning: style.fontKerning,
-        fontOpticalSizing: style.fontOpticalSizing,
-        fontFeatureSettings: style.fontFeatureSettings,
-        fontVariationSettings: style.fontVariationSettings,
-        fontSynthesis: style.fontSynthesis,
-        lineHeightCss: style.lineHeight || "normal",
-        textAlign: style.textAlign || "left",
-        textAlignLast: style.textAlignLast,
-        direction: style.direction,
-        letterSpacing: style.letterSpacing,
-        wordSpacing: style.wordSpacing,
-        wordBreak: style.wordBreak,
-        overflowWrap: style.overflowWrap,
-        whiteSpace: style.whiteSpace,
-        writingMode: style.writingMode,
-        textOrientation: style.textOrientation,
-        textRendering: style.textRendering,
-        textTransform: style.textTransform,
-        textIndent: style.textIndent,
-        textDecorationLine: style.textDecorationLine,
-        textDecorationStyle: style.textDecorationStyle,
-        textDecorationThickness: style.textDecorationThickness,
-        paddingTop: style.paddingTop,
-        paddingRight: style.paddingRight,
-        paddingBottom: style.paddingBottom,
-        paddingLeft: style.paddingLeft,
-        borderTopWidth: style.borderTopWidth,
-        borderRightWidth: style.borderRightWidth,
-        borderBottomWidth: style.borderBottomWidth,
-        borderLeftWidth: style.borderLeftWidth,
-        visualScaleX: scale.x,
-        visualScaleY: scale.y,
-        updatedAt: performance.now(),
-      });
+      const sourceKey = `tyrano:${domSourceId(source)}`;
+      const renderedLines = source.matches?.(".message_inner > p")
+        ? tyranoRenderedLines(source)
+        : [];
+      if (renderedLines.length) {
+        const logText = renderedLines.map((line) => line.text).join("\n");
+        for (let index = 0; index < renderedLines.length; index += 1) {
+          const line = renderedLines[index];
+          const key = `${sourceKey}:line:${index}`;
+          activeKeys.add(key);
+          upsertEntry(key, tyranoOverlayEntry(source, line.text, {
+            domRect: line.rect,
+            logText,
+            skipTextLog: index > 0,
+            styleSource: line.styleSource,
+          }));
+        }
+        continue;
+      }
+
+      const text = tyranoSourceText(source);
+      if (!text.trim()) continue;
+      activeKeys.add(sourceKey);
+      upsertEntry(sourceKey, tyranoOverlayEntry(source, text));
     }
 
     for (const [key, entry] of overlayState.entries) {
@@ -166,9 +137,189 @@ function tyranoRoots() {
   return Array.from(document.querySelectorAll("#tyrano_base, #vchat_base"));
 }
 
-function tyranoSourceText(source) {
+export function tyranoSourceText(source) {
   const text = typeof source.innerText === "string" ? source.innerText : source.textContent;
-  return String(text || "").replace(/\u00a0/g, " ").trim();
+  return String(text || "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\u00a0/g, " ");
+}
+
+export function tyranoOverlayWhiteSpace(text, computedWhiteSpace) {
+  if (!String(text).includes("\n")) return computedWhiteSpace || "pre-wrap";
+  return computedWhiteSpace === "pre" ||
+    computedWhiteSpace === "pre-wrap" ||
+    computedWhiteSpace === "break-spaces"
+    ? computedWhiteSpace
+    : "pre-wrap";
+}
+
+function tyranoOverlayEntry(source, text, options = {}) {
+  const boxStyle = getComputedStyle(source);
+  const style = getComputedStyle(options.styleSource || source);
+  const scale = domVisualScale(source);
+  const isMeasuredLine = Boolean(options.domRect);
+  return {
+    domSource: source,
+    domRect: options.domRect,
+    text,
+    logText: options.logText,
+    skipTextLog: options.skipTextLog,
+    fontSize: parseCssNumber(style.fontSize) || 24,
+    fontFace: fontFamilyWithEmojiFallback(style.fontFamily || "sans-serif"),
+    fontStyle: style.fontStyle,
+    fontWeight: style.fontWeight,
+    fontStretch: style.fontStretch,
+    fontVariant: style.fontVariant,
+    fontKerning: style.fontKerning,
+    fontOpticalSizing: style.fontOpticalSizing,
+    fontFeatureSettings: style.fontFeatureSettings,
+    fontVariationSettings: style.fontVariationSettings,
+    fontSynthesis: style.fontSynthesis,
+    lineHeightCss: isMeasuredLine
+      ? `${options.domRect.height / scale.y}px`
+      : style.lineHeight || "normal",
+    textAlign: isMeasuredLine ? "left" : style.textAlign || "left",
+    textAlignLast: style.textAlignLast,
+    direction: style.direction,
+    letterSpacing: style.letterSpacing,
+    wordSpacing: style.wordSpacing,
+    wordBreak: style.wordBreak,
+    overflowWrap: style.overflowWrap,
+    whiteSpace: isMeasuredLine ? "pre" : tyranoOverlayWhiteSpace(text, style.whiteSpace),
+    writingMode: style.writingMode,
+    textOrientation: style.textOrientation,
+    textRendering: style.textRendering,
+    textTransform: style.textTransform,
+    textIndent: isMeasuredLine ? "0px" : style.textIndent,
+    textDecorationLine: style.textDecorationLine,
+    textDecorationStyle: style.textDecorationStyle,
+    textDecorationThickness: style.textDecorationThickness,
+    paddingTop: isMeasuredLine ? "0px" : boxStyle.paddingTop,
+    paddingRight: isMeasuredLine ? "0px" : boxStyle.paddingRight,
+    paddingBottom: isMeasuredLine ? "0px" : boxStyle.paddingBottom,
+    paddingLeft: isMeasuredLine ? "0px" : boxStyle.paddingLeft,
+    borderTopWidth: isMeasuredLine ? "0px" : boxStyle.borderTopWidth,
+    borderRightWidth: isMeasuredLine ? "0px" : boxStyle.borderRightWidth,
+    borderBottomWidth: isMeasuredLine ? "0px" : boxStyle.borderBottomWidth,
+    borderLeftWidth: isMeasuredLine ? "0px" : boxStyle.borderLeftWidth,
+    visualScaleX: scale.x,
+    visualScaleY: scale.y,
+    updatedAt: performance.now(),
+  };
+}
+
+function tyranoRenderedLines(source) {
+  const writingMode = getComputedStyle(source).writingMode || "horizontal-tb";
+  const vertical = writingMode.startsWith("vertical");
+  const lines = [];
+  const seenSegments = new Set();
+  const walker = document.createTreeWalker(source, NodeFilter.SHOW_TEXT);
+  const range = document.createRange();
+  let node;
+
+  while ((node = walker.nextNode())) {
+    if (!tyranoTextNodeIsSemantic(node, source)) continue;
+    for (const segment of graphemeSegments(String(node.data || ""))) {
+      const text = segment.text.replace(/\u00a0/g, " ");
+      if (!text || /[\r\n]/u.test(text)) continue;
+      range.setStart(node, segment.index);
+      range.setEnd(node, segment.index + segment.text.length);
+      const rect = firstRenderedRect(range.getClientRects());
+      if (!rect) continue;
+
+      const signature = [
+        text,
+        Math.round(rect.left * 2),
+        Math.round(rect.top * 2),
+        Math.round(rect.width * 2),
+        Math.round(rect.height * 2),
+      ].join(":");
+      if (seenSegments.has(signature)) continue;
+      seenSegments.add(signature);
+
+      let line = lines.find((candidate) => rectSharesVisualLine(candidate, rect, vertical));
+      if (!line) {
+        line = {
+          text: "",
+          left: rect.left,
+          top: rect.top,
+          right: rect.right,
+          bottom: rect.bottom,
+          styleSource: node.parentElement || source,
+        };
+        lines.push(line);
+      }
+      line.text += text;
+      line.left = Math.min(line.left, rect.left);
+      line.top = Math.min(line.top, rect.top);
+      line.right = Math.max(line.right, rect.right);
+      line.bottom = Math.max(line.bottom, rect.bottom);
+    }
+  }
+  range.detach?.();
+
+  lines.sort((a, b) => vertical ? b.left - a.left : a.top - b.top);
+  return lines
+    .filter((line) => line.text.trim())
+    .map((line) => ({
+      text: line.text,
+      styleSource: line.styleSource,
+      rect: {
+        left: line.left,
+        top: line.top,
+        width: Math.max(1, line.right - line.left),
+        height: Math.max(1, line.bottom - line.top),
+      },
+    }));
+}
+
+function tyranoTextNodeIsSemantic(node, source) {
+  const parent = node.parentElement;
+  if (!parent || !source.contains(parent)) return false;
+  if (parent.closest(".img_next, .glyph_image, rt")) return false;
+
+  const decoratedCharacter = parent.closest(".char.text-shadow, .char.text-stroke");
+  if (!decoratedCharacter || !source.contains(decoratedCharacter)) return true;
+  const dummy = parent.closest(".dummy");
+  if (!dummy || dummy.parentElement !== decoratedCharacter) return false;
+  const dummies = decoratedCharacter.querySelectorAll(":scope > .dummy");
+  return dummy === dummies[dummies.length - 1];
+}
+
+function graphemeSegments(text) {
+  if (typeof Intl?.Segmenter === "function") {
+    const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+    return Array.from(segmenter.segment(text), (segment) => ({
+      index: segment.index,
+      text: segment.segment,
+    }));
+  }
+  const output = [];
+  let index = 0;
+  for (const character of Array.from(text)) {
+    output.push({ index, text: character });
+    index += character.length;
+  }
+  return output;
+}
+
+function firstRenderedRect(rects) {
+  return Array.from(rects).find((rect) =>
+    rect.height > 0 &&
+    Number.isFinite(rect.left) &&
+    Number.isFinite(rect.top) &&
+    Number.isFinite(rect.right) &&
+    Number.isFinite(rect.bottom),
+  ) || null;
+}
+
+function rectSharesVisualLine(line, rect, vertical) {
+  const start = vertical ? "left" : "top";
+  const end = vertical ? "right" : "bottom";
+  const overlap = Math.min(line[end], rect[end]) - Math.max(line[start], rect[start]);
+  const lineSize = line[end] - line[start];
+  const rectSize = rect[end] - rect[start];
+  return overlap >= Math.min(lineSize, rectSize) * 0.5;
 }
 
 function parseCssNumber(value) {

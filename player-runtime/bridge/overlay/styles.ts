@@ -96,16 +96,6 @@ export const OVERLAY_STYLES = `
     contain: layout style;
   }
 
-  .mz-player-text-overlay-entry-rpg-segment {
-    position: absolute;
-    display: block;
-    top: 0;
-    white-space: pre;
-    font: inherit;
-    color: inherit;
-    text-shadow: inherit;
-  }
-
   #mz-player-text-overlay.mz-player-text-overlay-readable
     .mz-player-text-overlay-entry {
     color: rgba(255, 255, 255, 0.96);

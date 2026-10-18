@@ -152,15 +152,17 @@ export function createTextOverlayBridge({ config, postParentMessage, settings })
   function upsertEntry(key, next) {
     const current = overlayState.entries.get(key) || {};
     const textChanged = current.text !== next.text;
+    const logTextChanged = current.logText !== next.logText;
     Object.assign(current, next);
     overlayState.entries.set(key, current);
-    if (textChanged) scheduleTextLog(key, current);
+    if (textChanged || logTextChanged) scheduleTextLog(key, current);
     scheduleFlush();
   }
 
   function scheduleTextLog(key, entry) {
+    if (entry.skipTextLog) return;
     if (!entryIsLoggable(entry)) return;
-    const text = String(entry.text || "");
+    const text = String(entry.logText ?? entry.text ?? "");
     const dedupeKey = textLogDedupeKey(text);
     if (!dedupeKey) return;
 

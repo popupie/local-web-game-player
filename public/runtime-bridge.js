@@ -2,12 +2,7 @@
 (() => {
   // shared/keyInput.ts
   function exactModifierMatch(event, trigger) {
-    return (
-      Boolean(event.altKey) === Boolean(trigger.altKey) &&
-      Boolean(event.ctrlKey) === Boolean(trigger.ctrlKey) &&
-      Boolean(event.metaKey) === Boolean(trigger.metaKey) &&
-      Boolean(event.shiftKey) === Boolean(trigger.shiftKey)
-    );
+    return Boolean(event.altKey) === Boolean(trigger.altKey) && Boolean(event.ctrlKey) === Boolean(trigger.ctrlKey) && Boolean(event.metaKey) === Boolean(trigger.metaKey) && Boolean(event.shiftKey) === Boolean(trigger.shiftKey);
   }
   function normalizeKeyChord(chord) {
     if (!chord || typeof chord !== "object") return null;
@@ -17,8 +12,7 @@
       ctrlKey: Boolean(chord.ctrlKey),
       metaKey: Boolean(chord.metaKey),
       shiftKey: Boolean(chord.shiftKey),
-      label:
-        typeof chord.label === "string" && chord.label ? chord.label : "Key",
+      label: typeof chord.label === "string" && chord.label ? chord.label : "Key"
     };
   }
 
@@ -39,13 +33,7 @@
       window.parent.postMessage(message, "*");
     }
   }
-  function createParentBridge({
-    gameId,
-    overlay,
-    postParentMessage,
-    settings,
-    viewport,
-  }) {
+  function createParentBridge({ gameId, overlay, postParentMessage, settings, viewport }) {
     function installReservedKeys() {
       window.addEventListener("keydown", handleReservedKeyEvent, true);
     }
@@ -56,43 +44,20 @@
       event.stopImmediatePropagation();
       if (!applyReservedKeyAction(match.action)) return;
       overlay.refreshOverlayClasses();
-      postParentMessage({
-        type: "reserved-key",
-        action: match.action,
-        code: event.code,
-      });
+      postParentMessage({ type: "reserved-key", action: match.action, code: event.code });
       postStatus();
     }
     function reservedKeyForEvent(event) {
-      return (settings.reservedKeys || []).find((key) =>
-        keyEventMatchesChord(event, key),
-      );
+      return (settings.reservedKeys || []).find((key) => keyEventMatchesChord(event, key));
     }
     function applyReservedKeyAction(action) {
       if (action === "toggleOverlay") {
-        settings.replace(
-          settings.overlayEnabled
-            ? {
-                ...settings.current,
-                overlayEnabled: false,
-                readableOverlay: false,
-                readerMode: false,
-              }
-            : {
-                ...settings.current,
-                overlayEnabled: true,
-                readableOverlay: false,
-                readerMode: true,
-              },
-        );
+        settings.replace(settings.overlayEnabled ? { ...settings.current, overlayEnabled: false, readableOverlay: false, readerMode: false } : { ...settings.current, overlayEnabled: true, readableOverlay: false, readerMode: true });
         return true;
       }
       if (action === "toggleReader") {
         if (!settings.overlayEnabled) return false;
-        settings.patch({
-          readableOverlay: !settings.readableOverlay,
-          readerMode: true,
-        });
+        settings.patch({ readableOverlay: !settings.readableOverlay, readerMode: true });
         return true;
       }
       return true;
@@ -125,45 +90,27 @@
         settings.patch({ overlayEnabled: Boolean(message.enabled) });
       }
       if (message.type === "reader-mode") {
-        settings.patch({
-          overlayEnabled: message.enabled ? true : settings.overlayEnabled,
-        });
+        settings.patch({ overlayEnabled: message.enabled ? true : settings.overlayEnabled });
       }
     }
     function installErrorBridge() {
       window.addEventListener("error", (event) => {
-        postParentMessage({
-          type: "runtime-error",
-          message: String(event.message || "Runtime error"),
-          stack: event.error && event.error.stack,
-        });
+        postParentMessage({ type: "runtime-error", message: String(event.message || "Runtime error"), stack: event.error && event.error.stack });
       });
       window.addEventListener("unhandledrejection", (event) => {
         const reason = event.reason || {};
-        postParentMessage({
-          type: "runtime-error",
-          message: String(reason.message || reason || "Unhandled rejection"),
-          stack: reason.stack,
-        });
+        postParentMessage({ type: "runtime-error", message: String(reason.message || reason || "Unhandled rejection"), stack: reason.stack });
       });
     }
     function postStatus() {
-      postParentMessage({
-        type: "overlay-availability",
-        gameId,
-        available: true,
-      });
-      postParentMessage({
-        type: "overlay-status",
-        overlayEnabled: settings.overlayEnabled,
-        readerMode: settings.readerMode,
-      });
+      postParentMessage({ type: "overlay-availability", gameId, available: true });
+      postParentMessage({ type: "overlay-status", overlayEnabled: settings.overlayEnabled, readerMode: settings.readerMode });
     }
     return {
       installErrorBridge,
       installMessageBridge,
       installReservedKeys,
-      postStatus,
+      postStatus
     };
   }
 
@@ -196,7 +143,7 @@
       },
       get readerMode() {
         return current.readerMode;
-      },
+      }
     };
   }
   function normalizeSettings(next) {
@@ -204,23 +151,18 @@
     const overlayEnabled = Boolean(normalized.overlayEnabled);
     return {
       reservedKeys: normalized.reservedKeys || [],
-      dictionaryDismissGuard: normalizeDictionaryDismissGuard(
-        normalized.dictionaryDismissGuard,
-      ),
+      dictionaryDismissGuard: normalizeDictionaryDismissGuard(normalized.dictionaryDismissGuard),
       overlayEnabled,
       readableOverlay: overlayEnabled && Boolean(normalized.readableOverlay),
-      readerMode: overlayEnabled,
+      readerMode: overlayEnabled
     };
   }
   function normalizeDictionaryDismissGuard(next) {
     const guard = next || {};
-    const triggers =
-      Array.isArray(guard.triggers) && guard.triggers.length > 0
-        ? guard.triggers.map(normalizeKeyChord).filter(Boolean)
-        : [];
+    const triggers = Array.isArray(guard.triggers) && guard.triggers.length > 0 ? guard.triggers.map(normalizeKeyChord).filter(Boolean) : [];
     return {
       enabled: guard.enabled !== false,
-      triggers,
+      triggers
     };
   }
 
@@ -232,47 +174,33 @@
       removeItem: Storage.prototype.removeItem,
       clear: Storage.prototype.clear,
       key: Storage.prototype.key,
-      length: Object.getOwnPropertyDescriptor(Storage.prototype, "length"),
+      length: Object.getOwnPropertyDescriptor(Storage.prototype, "length")
     };
-    const namespaced = (key) =>
-      String(key).startsWith(namespace)
-        ? String(key)
-        : `${namespace}${String(key)}`;
+    const namespaced = (key) => String(key).startsWith(namespace) ? String(key) : `${namespace}${String(key)}`;
     const isLocal = (target) => target === window.localStorage;
     const localKeys = () => {
       const keys = [];
-      for (
-        let index = 0;
-        index < original.length.get.call(window.localStorage);
-        index += 1
-      ) {
+      for (let index = 0; index < original.length.get.call(window.localStorage); index += 1) {
         const key = original.key.call(window.localStorage, index);
         if (key && key.startsWith(namespace)) keys.push(key);
       }
       return keys;
     };
-    Storage.prototype.getItem = function (key) {
+    Storage.prototype.getItem = function(key) {
       return original.getItem.call(this, isLocal(this) ? namespaced(key) : key);
     };
-    Storage.prototype.setItem = function (key, value) {
-      return original.setItem.call(
-        this,
-        isLocal(this) ? namespaced(key) : key,
-        value,
-      );
+    Storage.prototype.setItem = function(key, value) {
+      return original.setItem.call(this, isLocal(this) ? namespaced(key) : key, value);
     };
-    Storage.prototype.removeItem = function (key) {
-      return original.removeItem.call(
-        this,
-        isLocal(this) ? namespaced(key) : key,
-      );
+    Storage.prototype.removeItem = function(key) {
+      return original.removeItem.call(this, isLocal(this) ? namespaced(key) : key);
     };
-    Storage.prototype.clear = function () {
+    Storage.prototype.clear = function() {
       if (!isLocal(this)) return original.clear.call(this);
       for (const key of localKeys()) original.removeItem.call(this, key);
       return void 0;
     };
-    Storage.prototype.key = function (index) {
+    Storage.prototype.key = function(index) {
       if (!isLocal(this)) return original.key.call(this, index);
       const key = localKeys()[index] || null;
       return key ? key.slice(namespace.length) : null;
@@ -281,12 +209,12 @@
       Object.defineProperty(Storage.prototype, "length", {
         configurable: true,
         get() {
-          if (this !== window.localStorage)
-            return original.length.get.call(this);
+          if (this !== window.localStorage) return original.length.get.call(this);
           return localKeys().length;
-        },
+        }
       });
-    } catch {}
+    } catch {
+    }
   }
 
   // player-runtime/bridge/constants.ts
@@ -302,7 +230,7 @@
   function transformPoint(matrix, x, y) {
     return {
       x: matrix.a * x + matrix.c * y + matrix.tx,
-      y: matrix.b * x + matrix.d * y + matrix.ty,
+      y: matrix.b * x + matrix.d * y + matrix.ty
     };
   }
   function spriteFrame(sprite) {
@@ -313,7 +241,7 @@
       x: Number(frame && frame.x) || 0,
       y: Number(frame && frame.y) || 0,
       width: Math.max(0, width),
-      height: Math.max(0, height),
+      height: Math.max(0, height)
     };
   }
   function roundCssPixel(value) {
@@ -326,13 +254,9 @@
     if (!(width > 0) || !(height > 0)) return null;
     const cssPoints = points.map((point) => ({
       x: Number(point?.x),
-      y: Number(point?.y),
+      y: Number(point?.y)
     }));
-    if (
-      cssPoints.some(
-        (point) => !Number.isFinite(point.x) || !Number.isFinite(point.y),
-      )
-    ) {
+    if (cssPoints.some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y))) {
       return null;
     }
     const [topLeft, topRight, , bottomLeft] = cssPoints;
@@ -345,25 +269,21 @@
         a: (topRight.x - topLeft.x) / width,
         b: (topRight.y - topLeft.y) / width,
         c: (bottomLeft.x - topLeft.x) / height,
-        d: (bottomLeft.y - topLeft.y) / height,
+        d: (bottomLeft.y - topLeft.y) / height
       },
       bounds: {
         left: Math.min(...cssPoints.map((point) => point.x)),
         top: Math.min(...cssPoints.map((point) => point.y)),
         right: Math.max(...cssPoints.map((point) => point.x)),
-        bottom: Math.max(...cssPoints.map((point) => point.y)),
-      },
+        bottom: Math.max(...cssPoints.map((point) => point.y))
+      }
     };
   }
   function displayObjectIsVisible(object) {
     let current = object;
     let guard = 0;
     while (current && guard++ < 30) {
-      if (
-        current.visible === false ||
-        current.renderable === false ||
-        current.alpha === 0
-      ) {
+      if (current.visible === false || current.renderable === false || current.alpha === 0) {
         return false;
       }
       current = current.parent;
@@ -371,20 +291,10 @@
     return true;
   }
   function rectsIntersect(a, b) {
-    return (
-      a.x < b.x + b.width &&
-      a.x + a.width > b.x &&
-      a.y < b.y + b.height &&
-      a.y + a.height > b.y
-    );
+    return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
   }
   function boundsIntersectRect(bounds, rect) {
-    return (
-      bounds.left < rect.right &&
-      bounds.top < rect.bottom &&
-      bounds.right > rect.left &&
-      bounds.bottom > rect.top
-    );
+    return bounds.left < rect.right && bounds.top < rect.bottom && bounds.right > rect.left && bounds.bottom > rect.top;
   }
   function intersectRects(a, b) {
     const x1 = Math.max(a.x, b.x);
@@ -414,8 +324,7 @@
       const current = queue.shift();
       if (!current || seen.has(current)) continue;
       seen.add(current);
-      if (current.bitmap === bitmap || current._bitmap === bitmap)
-        return current;
+      if (current.bitmap === bitmap || current._bitmap === bitmap) return current;
       if (Array.isArray(current.children)) queue.push(...current.children);
     }
     return null;
@@ -423,17 +332,12 @@
   function contentSpriteFor(owner, bitmap) {
     const candidates = [
       owner && owner._windowContentsSprite,
-      owner && owner._contentsSprite,
+      owner && owner._contentsSprite
     ];
     const matching = candidates.find(
-      (sprite) => sprite && sprite.bitmap === bitmap,
+      (sprite) => sprite && sprite.bitmap === bitmap
     );
-    return (
-      matching ||
-      findBitmapSprite(owner, bitmap) ||
-      candidates.find(Boolean) ||
-      null
-    );
+    return matching || findBitmapSprite(owner, bitmap) || candidates.find(Boolean) || null;
   }
   function contentGeometry(entry) {
     const owner = entry.owner;
@@ -449,7 +353,7 @@
         originX: frame.x,
         originY: frame.y,
         visibleWidth: frame.width,
-        visibleHeight: frame.height,
+        visibleHeight: frame.height
       };
     }
     const ownerPos = ownerWorldPosition(owner);
@@ -463,20 +367,15 @@
       originY,
       visibleWidth: Math.max(
         0,
-        (Number(owner.width) || Number(owner._width) || 0) - padding * 2,
+        (Number(owner.width) || Number(owner._width) || 0) - padding * 2
       ),
       visibleHeight: Math.max(
         0,
-        (Number(owner.height) || Number(owner._height) || 0) - padding * 2,
-      ),
+        (Number(owner.height) || Number(owner._height) || 0) - padding * 2
+      )
     };
   }
-  function displayObjectPageBounds(
-    object,
-    canvasRect,
-    canvasWidth,
-    canvasHeight,
-  ) {
+  function displayObjectPageBounds(object, canvasRect, canvasWidth, canvasHeight) {
     if (!object || !displayObjectIsVisible(object)) return null;
     const frame = spriteFrame(object);
     if (frame.width <= 0 || frame.height <= 0) return null;
@@ -484,19 +383,16 @@
     const anchorY = Number(object.anchor?.y) || 0;
     const matrix = object.worldTransform || object.transform?.worldTransform;
     let points;
-    if (
-      matrix &&
-      [matrix.a, matrix.b, matrix.c, matrix.d, matrix.tx, matrix.ty].every(
-        Number.isFinite,
-      )
-    ) {
+    if (matrix && [matrix.a, matrix.b, matrix.c, matrix.d, matrix.tx, matrix.ty].every(
+      Number.isFinite
+    )) {
       const left2 = -anchorX * frame.width;
       const top2 = -anchorY * frame.height;
       points = [
         transformPoint(matrix, left2, top2),
         transformPoint(matrix, left2 + frame.width, top2),
         transformPoint(matrix, left2 + frame.width, top2 + frame.height),
-        transformPoint(matrix, left2, top2 + frame.height),
+        transformPoint(matrix, left2, top2 + frame.height)
       ];
     } else {
       const position = ownerWorldPosition(object);
@@ -506,16 +402,14 @@
         { x: left2, y: top2 },
         { x: left2 + frame.width, y: top2 },
         { x: left2 + frame.width, y: top2 + frame.height },
-        { x: left2, y: top2 + frame.height },
+        { x: left2, y: top2 + frame.height }
       ];
     }
-    const cssScaleX =
-      canvasRect.width / (Number(canvasWidth) || canvasRect.width || 1);
-    const cssScaleY =
-      canvasRect.height / (Number(canvasHeight) || canvasRect.height || 1);
+    const cssScaleX = canvasRect.width / (Number(canvasWidth) || canvasRect.width || 1);
+    const cssScaleY = canvasRect.height / (Number(canvasHeight) || canvasRect.height || 1);
     const cssPoints = points.map((point) => ({
       x: canvasRect.left + point.x * cssScaleX,
-      y: canvasRect.top + point.y * cssScaleY,
+      y: canvasRect.top + point.y * cssScaleY
     }));
     const left = Math.min(...cssPoints.map((point) => point.x));
     const top = Math.min(...cssPoints.map((point) => point.y));
@@ -525,13 +419,13 @@
       left: roundCssPixel(left),
       top: roundCssPixel(top),
       width: roundCssPixel(Math.max(1, right - left)),
-      height: roundCssPixel(Math.max(1, bottom - top)),
+      height: roundCssPixel(Math.max(1, bottom - top))
     };
   }
   function hashText(text) {
     let hash = 0;
     for (let index = 0; index < text.length; index += 1) {
-      hash = ((hash << 5) - hash + text.charCodeAt(index)) | 0;
+      hash = (hash << 5) - hash + text.charCodeAt(index) | 0;
     }
     return (hash >>> 0).toString(36);
   }
@@ -543,24 +437,24 @@
     gt: ">",
     lt: "<",
     nbsp: "\xA0",
-    quot: '"',
+    quot: '"'
   };
-  var COCOS_EMOJI_FONT_FALLBACK =
-    '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+  var COCOS_EMOJI_FONT_FALLBACK = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
   function resolveCocosEngine(system) {
     if (!system || typeof system.get !== "function") return null;
     const candidates = [];
     try {
-      if (typeof system.resolve === "function")
-        candidates.push(system.resolve("cc"));
-    } catch {}
+      if (typeof system.resolve === "function") candidates.push(system.resolve("cc"));
+    } catch {
+    }
     candidates.push("cc");
     for (const id of candidates) {
       if (!id) continue;
       try {
         const engine = system.get(id);
         if (isCocosEngine(engine)) return engine;
-      } catch {}
+      } catch {
+      }
     }
     try {
       if (typeof system.entries === "function") {
@@ -568,39 +462,24 @@
           if (isCocosEngine(module)) return module;
         }
       }
-    } catch {}
+    } catch {
+    }
     return null;
   }
   function isCocosEngine(value) {
     return Boolean(
-      value &&
-      value.director &&
-      typeof value.director.getScene === "function" &&
-      value.UITransform &&
-      (value.Label || value.RichText),
+      value && value.director && typeof value.director.getScene === "function" && value.UITransform && (value.Label || value.RichText)
     );
   }
   function plainCocosText(value) {
-    return String(value ?? "")
-      .replace(/<br\s*\/?>/giu, "\n")
-      .replace(/<img\b[^>]*>/giu, "")
-      .replace(/<[^>]+>/gu, "")
-      .replace(
-        /&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/giu,
-        (entity, decimal, hexadecimal, named) => {
-          if (decimal)
-            return safeCodePoint(Number.parseInt(decimal, 10), entity);
-          if (hexadecimal)
-            return safeCodePoint(Number.parseInt(hexadecimal, 16), entity);
-          return COCOS_NAMED_ENTITIES[String(named).toLowerCase()] ?? entity;
-        },
-      )
-      .replace(/\u00a0/gu, " ")
-      .trim();
+    return String(value ?? "").replace(/<br\s*\/?>/giu, "\n").replace(/<img\b[^>]*>/giu, "").replace(/<[^>]+>/gu, "").replace(/&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/giu, (entity, decimal, hexadecimal, named) => {
+      if (decimal) return safeCodePoint(Number.parseInt(decimal, 10), entity);
+      if (hexadecimal) return safeCodePoint(Number.parseInt(hexadecimal, 16), entity);
+      return COCOS_NAMED_ENTITIES[String(named).toLowerCase()] ?? entity;
+    }).replace(/\u00a0/gu, " ").trim();
   }
   function safeCodePoint(value, fallback) {
-    if (!Number.isInteger(value) || value < 0 || value > 1114111)
-      return fallback;
+    if (!Number.isInteger(value) || value < 0 || value > 1114111) return fallback;
     try {
       return String.fromCodePoint(value);
     } catch {
@@ -620,18 +499,11 @@
     return 0;
   }
   function cocosFontFamily(source) {
-    const renderedFamily =
-      source?.textStyle?.fontFamily || source?._textStyle?.fontFamily;
+    const renderedFamily = source?.textStyle?.fontFamily || source?._textStyle?.fontFamily;
     const usesSystemFont = source?.useSystemFont ?? source?._isSystemFontUsed;
-    const assetFamily =
-      source?.font?._nativeAsset || source?._font?._nativeAsset;
+    const assetFamily = source?.font?._nativeAsset || source?._font?._nativeAsset;
     const systemFamily = source?.fontFamily || source?._fontFamily;
-    const family =
-      renderedFamily ||
-      (usesSystemFont === false ? assetFamily : systemFamily) ||
-      assetFamily ||
-      systemFamily ||
-      "Arial";
+    const family = renderedFamily || (usesSystemFont === false ? assetFamily : systemFamily) || assetFamily || systemFamily || "Arial";
     return String(family).trim() || "Arial";
   }
   function cocosCssFontFamily(source) {
@@ -639,30 +511,17 @@
     return `${family}, ${COCOS_EMOJI_FONT_FALLBACK}`;
   }
   function cocosFontMetrics(source, fallbackRenderScale = 1) {
-    const configuredFontSize =
-      firstPositiveNumber(source?.fontSize, source?._fontSize) || 24;
-    const renderedFontSize = firstPositiveNumber(
-      source?.actualFontSize,
-      source?._actualFontSize,
-    );
-    const renderScale =
-      firstPositiveNumber(
-        source?.textStyle?.fontScale,
-        source?._textStyle?.fontScale,
-        fallbackRenderScale,
-      ) || 1;
+    const configuredFontSize = firstPositiveNumber(source?.fontSize, source?._fontSize) || 24;
+    const renderedFontSize = firstPositiveNumber(source?.actualFontSize, source?._actualFontSize);
+    const renderScale = firstPositiveNumber(
+      source?.textStyle?.fontScale,
+      source?._textStyle?.fontScale,
+      fallbackRenderScale
+    ) || 1;
     const overflow = Number(source?.overflow ?? source?._overflow);
-    const fontSize =
-      overflow === 2 && renderedFontSize
-        ? renderedFontSize / renderScale
-        : configuredFontSize;
-    const configuredLineHeight = firstPositiveNumber(
-      source?.lineHeight,
-      source?._lineHeight,
-    );
-    const lineHeight = configuredLineHeight
-      ? configuredLineHeight * (fontSize / configuredFontSize)
-      : fontSize;
+    const fontSize = overflow === 2 && renderedFontSize ? renderedFontSize / renderScale : configuredFontSize;
+    const configuredLineHeight = firstPositiveNumber(source?.lineHeight, source?._lineHeight);
+    const lineHeight = configuredLineHeight ? configuredLineHeight * (fontSize / configuredFontSize) : fontSize;
     return { fontSize, lineHeight };
   }
   function cocosRenderedText(source, fallbackText) {
@@ -670,34 +529,23 @@
     if (Array.isArray(segments) && segments.length > 0) {
       const segmentLineCount = segments.reduce(
         (count, segment) => Math.max(count, Number(segment?.lineCount) || 1),
-        1,
+        1
       );
-      const lineCount = Math.max(
-        1,
-        Number(source?._lineCount) || segmentLineCount,
-      );
+      const lineCount = Math.max(1, Number(source?._lineCount) || segmentLineCount);
       const lines = Array.from({ length: lineCount }, () => "");
       let hasText = false;
       for (const segment of segments) {
         const value = segment?.comp?.string ?? segment?.comp?._string;
         if (value === void 0 || value === null) continue;
-        const index = Math.min(
-          lineCount - 1,
-          Math.max(0, (Number(segment?.lineCount) || 1) - 1),
-        );
+        const index = Math.min(lineCount - 1, Math.max(0, (Number(segment?.lineCount) || 1) - 1));
         lines[index] += String(value);
         hasText = true;
       }
       if (hasText) return lines.join("\n");
     }
     const layoutData = source?.textLayoutData || source?._textLayoutData;
-    if (
-      Array.isArray(layoutData?.parsedString) &&
-      layoutData.parsedString.length > 0
-    ) {
-      return layoutData.parsedString
-        .map((line) => String(line ?? ""))
-        .join("\n");
+    if (Array.isArray(layoutData?.parsedString) && layoutData.parsedString.length > 0) {
+      return layoutData.parsedString.map((line) => String(line ?? "")).join("\n");
     }
     return String(fallbackText ?? "");
   }
@@ -709,26 +557,16 @@
     return 0;
   }
   function cocosWorldToScreen(camera, Vec3, world) {
-    if (
-      !camera ||
-      typeof camera.worldToScreen !== "function" ||
-      typeof Vec3 !== "function"
-    ) {
+    if (!camera || typeof camera.worldToScreen !== "function" || typeof Vec3 !== "function") {
       return null;
     }
     return camera.worldToScreen(new Vec3(), world);
   }
-  function cocosCssRectFromScreenPoints(
-    points,
-    canvasRect,
-    canvasWidth,
-    canvasHeight,
-  ) {
+  function cocosCssRectFromScreenPoints(points, canvasRect, canvasWidth, canvasHeight) {
     if (!Array.isArray(points) || points.length < 2) return null;
-    if (!canvasRect || canvasRect.width <= 0 || canvasRect.height <= 0)
-      return null;
+    if (!canvasRect || canvasRect.width <= 0 || canvasRect.height <= 0) return null;
     const finitePoints = points.filter(
-      (point) => Number.isFinite(point?.x) && Number.isFinite(point?.y),
+      (point) => Number.isFinite(point?.x) && Number.isFinite(point?.y)
     );
     if (finitePoints.length !== points.length) return null;
     const pixelWidth = Number(canvasWidth) || canvasRect.width;
@@ -743,20 +581,12 @@
       left: canvasRect.left + minX * scaleX,
       top: canvasRect.top + (pixelHeight - maxY) * scaleY,
       width: Math.max(1, (maxX - minX) * scaleX),
-      height: Math.max(1, (maxY - minY) * scaleY),
+      height: Math.max(1, (maxY - minY) * scaleY)
     };
   }
-  function cocosCssTransformFromScreenPoints(
-    points,
-    canvasRect,
-    canvasWidth,
-    canvasHeight,
-    localWidth,
-    localHeight,
-  ) {
+  function cocosCssTransformFromScreenPoints(points, canvasRect, canvasWidth, canvasHeight, localWidth, localHeight) {
     if (!Array.isArray(points) || points.length !== 4) return null;
-    if (!canvasRect || canvasRect.width <= 0 || canvasRect.height <= 0)
-      return null;
+    if (!canvasRect || canvasRect.width <= 0 || canvasRect.height <= 0) return null;
     const width = Number(localWidth);
     const height = Number(localHeight);
     if (!(width > 0) || !(height > 0)) return null;
@@ -766,12 +596,12 @@
     const scaleY = canvasRect.height / pixelHeight;
     const cssPoints = points.map((point) => ({
       x: canvasRect.left + Number(point?.x) * scaleX,
-      y: canvasRect.top + (pixelHeight - Number(point?.y)) * scaleY,
+      y: canvasRect.top + (pixelHeight - Number(point?.y)) * scaleY
     }));
     return cssTransformFromTopLeftPoints(
       [cssPoints[3], cssPoints[2], cssPoints[1], cssPoints[0]],
       width,
-      height,
+      height
     );
   }
 
@@ -783,7 +613,7 @@
     overlayState,
     removeEntry,
     scheduleFlush,
-    upsertEntry,
+    upsertEntry
   }) {
     function install() {
       if (overlayState.cocosHooksInstalled) return;
@@ -820,23 +650,17 @@
       if (!scene || !(canvas instanceof HTMLCanvasElement)) return;
       const seen = /* @__PURE__ */ new Set();
       const visit = (node, insideRichText = false) => {
-        if (!node || node.activeInHierarchy === false || node.active === false)
-          return;
-        const components = Array.isArray(node._components)
-          ? node._components
-          : [];
-        const richText = components.find((component) =>
-          cocosComponentIs(component, engine.RichText),
+        if (!node || node.activeInHierarchy === false || node.active === false) return;
+        const components = Array.isArray(node._components) ? node._components : [];
+        const richText = components.find(
+          (component) => cocosComponentIs(component, engine.RichText)
         );
         if (richText && cocosSourceIsVisible(richText)) {
           captureSource(engine, richText, canvas, true, seen);
         }
         if (!insideRichText && !richText) {
           for (const component of components) {
-            if (
-              cocosComponentIs(component, engine.Label) &&
-              cocosSourceIsVisible(component)
-            ) {
+            if (cocosComponentIs(component, engine.Label) && cocosSourceIsVisible(component)) {
               captureSource(engine, component, canvas, false, seen);
             }
           }
@@ -853,11 +677,7 @@
     }
     function captureSource(engine, source, canvas, richText, seen) {
       const rawText = source.string ?? source._string;
-      const text = richText
-        ? plainCocosText(rawText)
-        : String(rawText ?? "")
-            .replace(/\u00a0/gu, " ")
-            .trim();
+      const text = richText ? plainCocosText(rawText) : String(rawText ?? "").replace(/\u00a0/gu, " ").trim();
       if (!text) return;
       const displayText = cocosRenderedText(source, text);
       const rect = cocosPageRect(engine, source, canvas, displayText);
@@ -875,31 +695,25 @@
         fontFace: cocosCssFontFamily(source),
         fontStyle: source.isItalic || source._isItalic ? "italic" : "normal",
         fontWeight: source.isBold || source._isBold ? "700" : "400",
-        textDecoration:
-          source.isUnderline || source._isUnderline ? "underline" : "none",
+        textDecoration: source.isUnderline || source._isUnderline ? "underline" : "none",
         lineHeight: rect.lineHeight,
         paddingTop: rect.paddingTop,
-        textAlign: cocosTextAlign(
-          source.horizontalAlign ?? source._horizontalAlign,
-        ),
-        updatedAt: performance.now(),
+        textAlign: cocosTextAlign(source.horizontalAlign ?? source._horizontalAlign),
+        updatedAt: performance.now()
       });
     }
     return { install };
   }
   function cocosSourceIsVisible(source) {
     const node = source?.node;
-    if (!node || node.isValid === false || node.activeInHierarchy === false)
-      return false;
-    if (source.enabled === false || source.enabledInHierarchy === false)
-      return false;
+    if (!node || node.isValid === false || node.activeInHierarchy === false) return false;
+    if (source.enabled === false || source.enabledInHierarchy === false) return false;
     const colorAlpha = Number(source.color?.a ?? source._color?.a ?? 255);
     if (colorAlpha <= 0) return false;
     let current = node;
     let guard = 0;
     while (current && guard++ < 100) {
-      if (current.active === false || current.activeInHierarchy === false)
-        return false;
+      if (current.active === false || current.activeInHierarchy === false) return false;
       current = current.parent;
     }
     return true;
@@ -913,15 +727,12 @@
     }
   }
   function cocosCanvas(engine) {
-    return (
-      engine?.game?.canvas || document.querySelector("#GameCanvas, canvas")
-    );
+    return engine?.game?.canvas || document.querySelector("#GameCanvas, canvas");
   }
   function cocosPageRect(engine, source, canvas, text) {
     const node = source.node;
     const transform = node?.getComponent?.(engine.UITransform);
-    const camera =
-      engine?.director?.root?.batcher2D?.getFirstRenderCamera?.(node);
+    const camera = engine?.director?.root?.batcher2D?.getFirstRenderCamera?.(node);
     const Vec3 = engine?.Vec3;
     if (!transform || !camera || typeof Vec3 !== "function") return null;
     const contentSize = transform.contentSize || transform._contentSize;
@@ -937,15 +748,12 @@
       [-width * normalizedAnchorX, -height * normalizedAnchorY],
       [width * (1 - normalizedAnchorX), -height * normalizedAnchorY],
       [width * (1 - normalizedAnchorX), height * (1 - normalizedAnchorY)],
-      [-width * normalizedAnchorX, height * (1 - normalizedAnchorY)],
+      [-width * normalizedAnchorX, height * (1 - normalizedAnchorY)]
     ];
     const screenPoints = [];
     try {
       for (const [x, y] of localPoints) {
-        const world = transform.convertToWorldSpaceAR(
-          new Vec3(x, y, 0),
-          new Vec3(),
-        );
+        const world = transform.convertToWorldSpaceAR(new Vec3(x, y, 0), new Vec3());
         const screen = cocosWorldToScreen(camera, Vec3, world);
         if (!screen) return null;
         screenPoints.push({ x: Number(screen.x), y: Number(screen.y) });
@@ -958,7 +766,7 @@
       screenPoints,
       canvasRect,
       canvas.width,
-      canvas.height,
+      canvas.height
     );
     const geometry = cocosCssTransformFromScreenPoints(
       screenPoints,
@@ -966,23 +774,19 @@
       canvas.width,
       canvas.height,
       width,
-      height,
+      height
     );
-    if (
-      !rect ||
-      !geometry ||
-      !boundsIntersectRect(geometry.bounds, canvasRect)
-    ) {
+    if (!rect || !geometry || !boundsIntersectRect(geometry.bounds, canvasRect)) {
       return null;
     }
     const { fontSize, lineHeight } = cocosFontMetrics(
       source,
-      engine?.view?.getScaleX?.() || 1,
+      engine?.view?.getScaleX?.() || 1
     );
     const lineCount = Math.max(1, String(text).split("\n").length);
     const textHeight = Math.min(height, lineHeight * lineCount);
     const verticalFactor = cocosVerticalAlignFactor(
-      source.verticalAlign ?? source._verticalAlign,
+      source.verticalAlign ?? source._verticalAlign
     );
     return {
       left: roundCocosCssNumber(geometry.left),
@@ -991,10 +795,8 @@
       height: roundCocosCssNumber(geometry.height),
       fontSize: roundCocosCssNumber(fontSize),
       lineHeight: roundCocosCssNumber(lineHeight),
-      paddingTop: roundCocosCssNumber(
-        Math.max(0, height - textHeight) * verticalFactor,
-      ),
-      transform: `matrix(${roundCocosCssNumber(geometry.matrix.a)}, ${roundCocosCssNumber(geometry.matrix.b)}, ${roundCocosCssNumber(geometry.matrix.c)}, ${roundCocosCssNumber(geometry.matrix.d)}, 0, 0)`,
+      paddingTop: roundCocosCssNumber(Math.max(0, height - textHeight) * verticalFactor),
+      transform: `matrix(${roundCocosCssNumber(geometry.matrix.a)}, ${roundCocosCssNumber(geometry.matrix.b)}, ${roundCocosCssNumber(geometry.matrix.c)}, ${roundCocosCssNumber(geometry.matrix.d)}, 0, 0)`
     };
   }
   function roundCocosCssNumber(value) {
@@ -1002,12 +804,11 @@
   }
 
   // player-runtime/bridge/overlay/textStyle.ts
-  var EMOJI_FONT_FALLBACK =
-    '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+  var EMOJI_FONT_FALLBACK = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
   var EMOJI_FONT_NAMES = /* @__PURE__ */ new Set([
     "apple color emoji",
     "segoe ui emoji",
-    "noto color emoji",
+    "noto color emoji"
   ]);
   var GENERIC_FONT_FAMILIES = /* @__PURE__ */ new Set([
     "serif",
@@ -1022,25 +823,20 @@
     "ui-rounded",
     "emoji",
     "math",
-    "fangsong",
+    "fangsong"
   ]);
   function fontFamilyWithEmojiFallback(value) {
     const family = String(value || "sans-serif").trim() || "sans-serif";
     const families = splitFontFamilies(family);
-    const withoutEmoji = families.filter(
-      (item) => !EMOJI_FONT_NAMES.has(normalizeFontFamily(item)),
-    );
-    const genericIndex = withoutEmoji.findIndex((item) =>
-      GENERIC_FONT_FAMILIES.has(normalizeFontFamily(item)),
-    );
-    const insertionIndex =
-      genericIndex < 0 ? withoutEmoji.length : genericIndex;
+    const withoutEmoji = families.filter((item) => !EMOJI_FONT_NAMES.has(normalizeFontFamily(item)));
+    const genericIndex = withoutEmoji.findIndex((item) => GENERIC_FONT_FAMILIES.has(normalizeFontFamily(item)));
+    const insertionIndex = genericIndex < 0 ? withoutEmoji.length : genericIndex;
     withoutEmoji.splice(
       insertionIndex,
       0,
       '"Apple Color Emoji"',
       '"Segoe UI Emoji"',
-      '"Noto Color Emoji"',
+      '"Noto Color Emoji"'
     );
     if (genericIndex < 0) withoutEmoji.push("sans-serif");
     return withoutEmoji.join(", ") || EMOJI_FONT_FALLBACK;
@@ -1058,20 +854,12 @@
   }
   function canvasFontTraits(context, bitmap) {
     const font = String(context?.font || "");
-    const weightMatch = font.match(
-      /(?:^|\s)([1-9]00|bold(?:er)?|lighter)(?=\s|$)/iu,
-    );
-    const styleMatch = font.match(
-      /(?:^|\s)((?:italic|oblique(?:\s+-?\d+(?:\.\d+)?(?:deg|grad|rad|turn))?))(?=\s|$)/iu,
-    );
+    const weightMatch = font.match(/(?:^|\s)([1-9]00|bold(?:er)?|lighter)(?=\s|$)/iu);
+    const styleMatch = font.match(/(?:^|\s)((?:italic|oblique(?:\s+-?\d+(?:\.\d+)?(?:deg|grad|rad|turn))?))(?=\s|$)/iu);
     return {
       fontStyle: bitmap?.fontItalic ? "italic" : styleMatch?.[1] || "normal",
       fontWeight: bitmap?.fontBold ? "700" : weightMatch?.[1] || "400",
-      fontKerning: canvasEnum(
-        context?.fontKerning,
-        ["auto", "normal", "none"],
-        "auto",
-      ),
+      fontKerning: canvasEnum(context?.fontKerning, ["auto", "normal", "none"], "auto"),
       fontStretch: canvasEnum(
         context?.fontStretch,
         [
@@ -1083,9 +871,9 @@
           "semi-expanded",
           "expanded",
           "extra-expanded",
-          "ultra-expanded",
+          "ultra-expanded"
         ],
-        "normal",
+        "normal"
       ),
       fontVariantCaps: canvasEnum(
         context?.fontVariantCaps,
@@ -1096,17 +884,13 @@
           "petite-caps",
           "all-petite-caps",
           "unicase",
-          "titling-caps",
+          "titling-caps"
         ],
-        "normal",
+        "normal"
       ),
       letterSpacing: canvasLength(context?.letterSpacing, "0px"),
       wordSpacing: canvasLength(context?.wordSpacing, "0px"),
-      direction: canvasEnum(
-        context?.direction,
-        ["ltr", "rtl", "inherit"],
-        "inherit",
-      ),
+      direction: canvasEnum(context?.direction, ["ltr", "rtl", "inherit"], "inherit")
     };
   }
   function splitFontFamilies(value) {
@@ -1130,10 +914,7 @@
     return result;
   }
   function normalizeFontFamily(value) {
-    return String(value || "")
-      .trim()
-      .replace(/^(?:"([\s\S]*)"|'([\s\S]*)')$/u, "$1$2")
-      .toLocaleLowerCase();
+    return String(value || "").trim().replace(/^(?:"([\s\S]*)"|'([\s\S]*)')$/u, "$1$2").toLocaleLowerCase();
   }
   function canvasEnum(value, allowed, fallback) {
     const normalized = String(value || "").toLocaleLowerCase();
@@ -1143,17 +924,9 @@
     const normalized = String(value || "").trim();
     return /^-?\d+(?:\.\d+)?px$/u.test(normalized) ? normalized : fallback;
   }
-  function cssTransformFromTopLeftCanvasQuad(
-    points,
-    canvasRect,
-    canvasWidth,
-    canvasHeight,
-    localWidth,
-    localHeight,
-  ) {
+  function cssTransformFromTopLeftCanvasQuad(points, canvasRect, canvasWidth, canvasHeight, localWidth, localHeight) {
     if (!Array.isArray(points) || points.length !== 4) return null;
-    if (!canvasRect || canvasRect.width <= 0 || canvasRect.height <= 0)
-      return null;
+    if (!canvasRect || canvasRect.width <= 0 || canvasRect.height <= 0) return null;
     const width = Number(localWidth);
     const height = Number(localHeight);
     if (!(width > 0) || !(height > 0)) return null;
@@ -1163,7 +936,7 @@
     const scaleY = canvasRect.height / surfaceHeight;
     const cssPoints = points.map((point) => ({
       x: canvasRect.left + Number(point?.x) * scaleX,
-      y: canvasRect.top + Number(point?.y) * scaleY,
+      y: canvasRect.top + Number(point?.y) * scaleY
     }));
     return cssTransformFromTopLeftPoints(cssPoints, width, height);
   }
@@ -1174,7 +947,7 @@
     overlayIsActive,
     overlayState,
     removeEntry,
-    upsertEntry,
+    upsertEntry
   }) {
     function install() {
       if (overlayState.construct2HooksInstalled) return;
@@ -1192,8 +965,7 @@
       if (!runtime || !Array.isArray(runtime.types_by_index)) return;
       const seen = /* @__PURE__ */ new Set();
       for (const type of runtime.types_by_index) {
-        if (!isConstruct2TextType(type) || !Array.isArray(type.instances))
-          continue;
+        if (!isConstruct2TextType(type) || !Array.isArray(type.instances)) continue;
         for (const source of type.instances) {
           if (!construct2SourceIsVisible(source)) continue;
           const text = construct2SourceText(source);
@@ -1209,19 +981,13 @@
             width: rect.width,
             height: rect.height,
             fontSize: rect.fontSize,
-            fontFace: fontFamilyWithEmojiFallback(
-              source.facename || "sans-serif",
-            ),
-            fontStyle: /italic/iu.test(String(source.fontstyle || ""))
-              ? "italic"
-              : "normal",
-            fontWeight: /bold/iu.test(String(source.fontstyle || ""))
-              ? "700"
-              : "400",
+            fontFace: fontFamilyWithEmojiFallback(source.facename || "sans-serif"),
+            fontStyle: /italic/iu.test(String(source.fontstyle || "")) ? "italic" : "normal",
+            fontWeight: /bold/iu.test(String(source.fontstyle || "")) ? "700" : "400",
             lineHeight: rect.lineHeight,
             paddingTop: rect.paddingTop,
             textAlign: construct2TextAlign(source.halign),
-            updatedAt: performance.now(),
+            updatedAt: performance.now()
           });
         }
       }
@@ -1232,11 +998,9 @@
     return { install };
   }
   function construct2SourceIsVisible(source) {
-    if (!source || source.visible === false || Number(source.opacity) === 0)
-      return false;
+    if (!source || source.visible === false || Number(source.opacity) === 0) return false;
     const layer = source.layer;
-    if (!layer || layer.visible === false || Number(layer.opacity) === 0)
-      return false;
+    if (!layer || layer.visible === false || Number(layer.opacity) === 0) return false;
     return true;
   }
   function construct2TextSegments(text) {
@@ -1260,13 +1024,14 @@
     const plugin = type?.plugin;
     if (!plugins || !plugin) return false;
     return [plugins.Text, plugins.Spritefont2].some(
-      (Plugin) => typeof Plugin === "function" && plugin instanceof Plugin,
+      (Plugin) => typeof Plugin === "function" && plugin instanceof Plugin
     );
   }
   function construct2SourceText(source) {
     try {
       source.rebuildText?.();
-    } catch {}
+    } catch {
+    }
     if (Array.isArray(source.lines) && source.lines.length > 0) {
       const lines = source.lines.map((line) => String(line?.text ?? ""));
       if (lines.some(Boolean)) return lines.join("\n");
@@ -1288,16 +1053,12 @@
       [quad.tlx, quad.tly],
       [quad.trx, quad.try_],
       [quad.brx, quad.bry],
-      [quad.blx, quad.bly],
+      [quad.blx, quad.bly]
     ].map(([x, y]) => ({
       x: Number(layer.layerToCanvas?.(x, y, true, true)),
-      y: Number(layer.layerToCanvas?.(x, y, false, true)),
+      y: Number(layer.layerToCanvas?.(x, y, false, true))
     }));
-    if (
-      points.some(
-        (point) => !Number.isFinite(point.x) || !Number.isFinite(point.y),
-      )
-    ) {
+    if (points.some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y))) {
       return null;
     }
     const canvasRect = canvas.getBoundingClientRect();
@@ -1310,22 +1071,16 @@
       runtime.draw_width || canvas.width,
       runtime.draw_height || canvas.height,
       sourceWidth,
-      sourceHeight,
+      sourceHeight
     );
     if (!geometry || !boundsIntersectRect(geometry.bounds, canvasRect)) {
       return null;
     }
-    const sourceFontSize =
-      Number(source.characterHeight) * (Number(source.characterScale) || 1) ||
-      Number(source.pxHeight) ||
-      24;
-    const lineHeight =
-      sourceFontSize +
-      (Number(source.lineHeight) || Number(source.line_height_offset) || 0);
+    const sourceFontSize = Number(source.characterHeight) * (Number(source.characterScale) || 1) || Number(source.pxHeight) || 24;
+    const lineHeight = sourceFontSize + (Number(source.lineHeight) || Number(source.line_height_offset) || 0);
     const textHeight = Math.max(
       lineHeight,
-      Number(source.textHeight) ||
-        lineHeight * Math.max(1, source.lines?.length || 1),
+      Number(source.textHeight) || lineHeight * Math.max(1, source.lines?.length || 1)
     );
     return {
       left: roundCssNumber(geometry.left),
@@ -1335,9 +1090,9 @@
       fontSize: roundCssNumber(sourceFontSize),
       lineHeight: roundCssNumber(Math.max(1, lineHeight)),
       paddingTop: roundCssNumber(
-        (Number(source.valign) || 0) * Math.max(0, sourceHeight - textHeight),
+        (Number(source.valign) || 0) * Math.max(0, sourceHeight - textHeight)
       ),
-      transform: `matrix(${roundCssNumber(geometry.matrix.a)}, ${roundCssNumber(geometry.matrix.b)}, ${roundCssNumber(geometry.matrix.c)}, ${roundCssNumber(geometry.matrix.d)}, 0, 0)`,
+      transform: `matrix(${roundCssNumber(geometry.matrix.a)}, ${roundCssNumber(geometry.matrix.b)}, ${roundCssNumber(geometry.matrix.c)}, ${roundCssNumber(geometry.matrix.d)}, 0, 0)`
     };
   }
   function construct2TextAlign(halign) {
@@ -1356,12 +1111,7 @@
     const text = String(rawText ?? "");
     const matching = calls.filter((call) => call.text === text);
     const candidates = matching.length > 0 ? matching : calls;
-    return (
-      candidates.findLast?.((call) => call.kind === "fill") ||
-      [...candidates].reverse().find((call) => call.kind === "fill") ||
-      candidates[candidates.length - 1] ||
-      null
-    );
+    return candidates.findLast?.((call) => call.kind === "fill") || [...candidates].reverse().find((call) => call.kind === "fill") || candidates[candidates.length - 1] || null;
   }
   function renderedRpgMakerText(rawText, drawCall) {
     return String(drawCall?.text ?? rawText ?? "");
@@ -1374,17 +1124,11 @@
     refreshRpgMakerFontMetrics,
     removeEntry,
     scheduleFlush,
-    upsertEntry,
+    upsertEntry
   }) {
     function installRpgMakerOverlayHooks() {
       const install = () => {
-        if (
-          !window.Bitmap ||
-          !window.Window_Base ||
-          !window.Window ||
-          !window.Graphics
-        )
-          return false;
+        if (!window.Bitmap || !window.Window_Base || !window.Window || !window.Graphics) return false;
         if (overlayState.installedHooks) {
           hookRpgMakerTextMethods();
           return true;
@@ -1396,23 +1140,20 @@
         scheduleRpgMakerTextRehook();
         if (document.fonts) {
           document.fonts.ready.then(refreshRpgMakerFontMetrics);
-          document.fonts.addEventListener?.(
-            "loadingdone",
-            refreshRpgMakerFontMetrics,
-          );
+          document.fonts.addEventListener?.("loadingdone", refreshRpgMakerFontMetrics);
         }
         const bitmapClear = Bitmap.prototype.clear;
-        Bitmap.prototype.clear = function () {
+        Bitmap.prototype.clear = function() {
           forgetBitmap(this);
           return bitmapClear.apply(this, arguments);
         };
         const bitmapClearRect = Bitmap.prototype.clearRect;
-        Bitmap.prototype.clearRect = function (x, y, width, height) {
+        Bitmap.prototype.clearRect = function(x, y, width, height) {
           forgetBitmapRect(this, x, y, width, height);
           return bitmapClearRect.apply(this, arguments);
         };
         const createContents = Window_Base.prototype.createContents;
-        Window_Base.prototype.createContents = function () {
+        Window_Base.prototype.createContents = function() {
           const previousContents = this.contents;
           const result = createContents.apply(this, arguments);
           if (previousContents && previousContents !== this.contents) {
@@ -1422,20 +1163,20 @@
           return result;
         };
         const windowMove = Window.prototype.move;
-        Window.prototype.move = function () {
+        Window.prototype.move = function() {
           const result = windowMove.apply(this, arguments);
           scheduleFlush();
           return result;
         };
         const windowUpdateTransform = Window.prototype.updateTransform;
-        Window.prototype.updateTransform = function () {
+        Window.prototype.updateTransform = function() {
           const result = windowUpdateTransform.apply(this, arguments);
           if (overlayIsActive()) scheduleFlush();
           return result;
         };
         const windowDestroy = Window.prototype.destroy;
         if (typeof windowDestroy === "function") {
-          Window.prototype.destroy = function () {
+          Window.prototype.destroy = function() {
             forgetOwner(this);
             const result = windowDestroy.apply(this, arguments);
             scheduleFlush();
@@ -1449,18 +1190,8 @@
     }
     function hookRpgMakerTextMethods() {
       const bitmapDrawText = window.Bitmap?.prototype?.drawText;
-      if (
-        typeof bitmapDrawText === "function" &&
-        !bitmapDrawText.__mzPlayerTextOverlayHook
-      ) {
-        const hookedBitmapDrawText = function (
-          text,
-          x,
-          y,
-          maxWidth,
-          lineHeight,
-          align,
-        ) {
+      if (typeof bitmapDrawText === "function" && !bitmapDrawText.__mzPlayerTextOverlayHook) {
+        const hookedBitmapDrawText = function(text, x, y, maxWidth, lineHeight, align) {
           const previousCapture = overlayState.activeRpgMakerDrawCapture;
           const drawCapture = { bitmap: this, calls: [] };
           overlayState.activeRpgMakerDrawCapture = drawCapture;
@@ -1476,7 +1207,7 @@
                 maxWidth,
                 lineHeight,
                 align,
-                preferredRpgMakerDrawCall(drawCapture.calls, text),
+                preferredRpgMakerDrawCall(drawCapture.calls, text)
               );
             }
             return result;
@@ -1489,25 +1220,16 @@
             }
           }
         };
-        Object.defineProperty(
-          hookedBitmapDrawText,
-          "__mzPlayerTextOverlayHook",
-          { value: true },
-        );
+        Object.defineProperty(hookedBitmapDrawText, "__mzPlayerTextOverlayHook", { value: true });
         Bitmap.prototype.drawText = hookedBitmapDrawText;
       }
       const drawTextEx = window.Window_Base?.prototype?.drawTextEx;
-      if (
-        typeof drawTextEx === "function" &&
-        !drawTextEx.__mzPlayerTextOverlayHook
-      ) {
-        const hookedDrawTextEx = function () {
+      if (typeof drawTextEx === "function" && !drawTextEx.__mzPlayerTextOverlayHook) {
+        const hookedDrawTextEx = function() {
           if (this.contents) trackBitmapOwner(this.contents, this);
           return drawTextEx.apply(this, arguments);
         };
-        Object.defineProperty(hookedDrawTextEx, "__mzPlayerTextOverlayHook", {
-          value: true,
-        });
+        Object.defineProperty(hookedDrawTextEx, "__mzPlayerTextOverlayHook", { value: true });
         Window_Base.prototype.drawTextEx = hookedDrawTextEx;
       }
     }
@@ -1528,11 +1250,11 @@
       if (!prototype || prototype.__mzPlayerTextOverlayCanvasHooks) return;
       Object.defineProperty(prototype, "__mzPlayerTextOverlayCanvasHooks", {
         value: true,
-        configurable: true,
+        configurable: true
       });
       const fillText = prototype.fillText;
       if (typeof fillText === "function") {
-        prototype.fillText = function (text, x, y, maxWidth) {
+        prototype.fillText = function(text, x, y, maxWidth) {
           recordRpgMakerDrawCall(this, "fill", text, x, y, maxWidth);
           const result = fillText.apply(this, arguments);
           captureCanvasText(this, text, x, y, maxWidth);
@@ -1541,7 +1263,7 @@
       }
       const strokeText = prototype.strokeText;
       if (typeof strokeText === "function") {
-        prototype.strokeText = function (text, x, y, maxWidth) {
+        prototype.strokeText = function(text, x, y, maxWidth) {
           recordRpgMakerDrawCall(this, "stroke", text, x, y, maxWidth);
           const result = strokeText.apply(this, arguments);
           captureCanvasText(this, text, x, y, maxWidth);
@@ -1577,7 +1299,7 @@
         direction: context.direction,
         measuredWidth: Number(metrics?.width) || 0,
         actualBoundingBoxAscent: Number(metrics?.actualBoundingBoxAscent),
-        actualBoundingBoxDescent: Number(metrics?.actualBoundingBoxDescent),
+        actualBoundingBoxDescent: Number(metrics?.actualBoundingBoxDescent)
       });
     }
     function trackBitmapOwner(bitmap, owner) {
@@ -1601,7 +1323,7 @@
       overlayState.lastScene = sceneManager._scene || null;
       const changeScene = sceneManager.changeScene;
       if (typeof changeScene === "function") {
-        sceneManager.changeScene = function () {
+        sceneManager.changeScene = function() {
           const result = changeScene.apply(this, arguments);
           handleSceneMaybeChanged(this._scene || null);
           return result;
@@ -1609,7 +1331,7 @@
       }
       const updateScene = sceneManager.updateScene;
       if (typeof updateScene === "function") {
-        sceneManager.updateScene = function () {
+        sceneManager.updateScene = function() {
           const result = updateScene.apply(this, arguments);
           handleSceneMaybeChanged(this._scene || null);
           return result;
@@ -1625,7 +1347,7 @@
         return;
       }
       overlayState.sceneBaseHooksInstalled = true;
-      sceneBase.prototype.terminate = function () {
+      sceneBase.prototype.terminate = function() {
         forgetScene(this);
         const result = terminate.apply(this, arguments);
         scheduleFlush();
@@ -1663,18 +1385,14 @@
         x: Number(x) || 0,
         y: Number(y) || 0,
         width: Number(width) || 0,
-        height: Number(height) || 0,
+        height: Number(height) || 0
       };
-      if (
-        clearRect.width >= bitmap.width * 0.9 &&
-        clearRect.height >= bitmap.height * 0.9
-      ) {
+      if (clearRect.width >= bitmap.width * 0.9 && clearRect.height >= bitmap.height * 0.9) {
         forgetBitmap(bitmap);
         return;
       }
       for (const [key, entry] of overlayState.entries) {
-        if (entry.bitmap === bitmap && rectsIntersect(clearRect, entry))
-          removeEntry(key, entry);
+        if (entry.bitmap === bitmap && rectsIntersect(clearRect, entry)) removeEntry(key, entry);
       }
       for (const [key, group] of overlayState.lineGroups) {
         if (group.bitmap === bitmap && rectsIntersect(clearRect, group)) {
@@ -1689,8 +1407,7 @@
         if (ownerBelongsToScene(entry.owner, scene)) removeEntry(key, entry);
       }
       for (const [key, group] of overlayState.lineGroups) {
-        if (ownerBelongsToScene(group.owner, scene))
-          overlayState.lineGroups.delete(key);
+        if (ownerBelongsToScene(group.owner, scene)) overlayState.lineGroups.delete(key);
       }
     }
     function forgetOwner(owner) {
@@ -1701,61 +1418,25 @@
         if (group.owner === owner) overlayState.lineGroups.delete(key);
       }
     }
-    function captureBitmapText(
-      bitmap,
-      rawText,
-      x,
-      y,
-      maxWidth,
-      lineHeight,
-      align,
-      drawCall,
-    ) {
+    function captureBitmapText(bitmap, rawText, x, y, maxWidth, lineHeight, align, drawCall) {
       const owner = overlayState.bitmapOwners.get(bitmap);
       if (!owner || rawText === void 0 || rawText === null) return;
       trackBitmapOwner(bitmap, owner);
       const text = renderedRpgMakerText(rawText, drawCall);
       if (!text) return;
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-      const height =
-        Number(lineHeight) || owner.lineHeight?.() || bitmap.fontSize || 24;
+      const height = Number(lineHeight) || owner.lineHeight?.() || bitmap.fontSize || 24;
       const widthLimit = Number(maxWidth) || 4294967295;
-      if (
-        y < -height ||
-        y >= bitmap.height ||
-        x > bitmap.width ||
-        x + widthLimit < 0
-      )
-        return;
+      if (y < -height || y >= bitmap.height || x > bitmap.width || x + widthLimit < 0) return;
       if (owner._checkWordWrapMode) return;
       const fontSize = canvasFontSize(drawCall, bitmap, owner);
       const fontTraits = canvasFontTraits(drawCall, bitmap);
-      const measuredWidth = Math.max(
-        1,
-        drawCall?.measuredWidth || safeMeasure(bitmap, text),
-      );
+      const measuredWidth = Math.max(1, drawCall?.measuredWidth || safeMeasure(bitmap, text));
       const adjustedX = adjustedTextLeft(x, widthLimit, measuredWidth, align);
       const normalizedY = Math.round(y);
-      const alignmentBox = alignmentTextBox(
-        x,
-        widthLimit,
-        measuredWidth,
-        align,
-      );
-      const baseline = rpgMakerCanvasBaseline(
-        drawCall,
-        normalizedY,
-        height,
-        fontSize,
-      );
-      const choice = rpgMakerChoiceInfo(
-        owner,
-        bitmap,
-        adjustedX,
-        normalizedY,
-        measuredWidth,
-        height,
-      );
+      const alignmentBox = alignmentTextBox(x, widthLimit, measuredWidth, align);
+      const baseline = rpgMakerCanvasBaseline(drawCall, normalizedY, height, fontSize);
+      const choice = rpgMakerChoiceInfo(owner, bitmap, adjustedX, normalizedY, measuredWidth, height);
       if (text.length === 1) {
         captureLineCharacter(
           owner,
@@ -1769,7 +1450,7 @@
           fontSize,
           fontTraits,
           choice,
-          drawCall,
+          drawCall
         );
         return;
       }
@@ -1781,7 +1462,7 @@
         Math.round(height),
         alignmentBox.textAlign,
         choice?.index ?? "",
-        hashText(text),
+        hashText(text)
       ].join(":");
       upsertEntry(key, {
         owner,
@@ -1794,17 +1475,14 @@
         baseline,
         fontSize,
         fontFace: fontFamilyWithEmojiFallback(
-          canvasFontFace(drawCall) ||
-            bitmap.fontFace ||
-            owner.standardFontFace?.() ||
-            "sans-serif",
+          canvasFontFace(drawCall) || bitmap.fontFace || owner.standardFontFace?.() || "sans-serif"
         ),
         ...fontTraits,
         textAlign: alignmentBox.textAlign,
         choiceIndex: choice?.index,
         choiceSprite: choice?.sprite,
         choiceLocalRect: choice?.rect,
-        updatedAt: performance.now(),
+        updatedAt: performance.now()
       });
     }
     function captureCanvasText(context, rawText, x, y, maxWidth) {
@@ -1817,24 +1495,12 @@
       const bitmap = binding.bitmap;
       const owner = binding.owner;
       const fontSize = canvasFontSize(context, bitmap, owner);
-      const height = Math.max(
-        1,
-        owner.lineHeight?.() || Math.ceil(fontSize * 1.25),
-      );
+      const height = Math.max(1, owner.lineHeight?.() || Math.ceil(fontSize * 1.25));
       const measuredWidth = safeMeasureCanvas(context, bitmap, text);
-      const width = Math.max(
-        1,
-        Math.min(measuredWidth, Number(maxWidth) || measuredWidth),
-      );
+      const width = Math.max(1, Math.min(measuredWidth, Number(maxWidth) || measuredWidth));
       const left = canvasTextLeft(x, width, context.textAlign);
       const top = canvasTextTop(y, fontSize, height, context.textBaseline);
-      if (
-        top < -height ||
-        top >= bitmap.height ||
-        left > bitmap.width ||
-        left + width < 0
-      )
-        return;
+      if (top < -height || top >= bitmap.height || left > bitmap.width || left + width < 0) return;
       if (owner._checkWordWrapMode) return;
       const key = [
         ownerId(owner),
@@ -1843,7 +1509,7 @@
         Math.round(top),
         Math.round(width),
         Math.round(height),
-        hashText(text),
+        hashText(text)
       ].join(":");
       const fontTraits = canvasFontTraits(context, bitmap);
       upsertEntry(key, {
@@ -1856,39 +1522,19 @@
         height,
         fontSize,
         fontFace: fontFamilyWithEmojiFallback(
-          canvasFontFace(context) ||
-            bitmap.fontFace ||
-            owner.standardFontFace?.() ||
-            "sans-serif",
+          canvasFontFace(context) || bitmap.fontFace || owner.standardFontFace?.() || "sans-serif"
         ),
         ...fontTraits,
         textAlign: "left",
-        updatedAt: performance.now(),
+        updatedAt: performance.now()
       });
     }
-    function captureLineCharacter(
-      owner,
-      bitmap,
-      text,
-      x,
-      y,
-      measuredWidth,
-      height,
-      baseline,
-      fontSize,
-      fontTraits,
-      choice,
-      drawCall,
-    ) {
+    function captureLineCharacter(owner, bitmap, text, x, y, measuredWidth, height, baseline, fontSize, fontTraits, choice, drawCall) {
       const ownerKey = ownerId(owner);
       const key = `${ownerKey}:line:${Math.round(y)}:${Math.round(height)}:${fontSize}:${drawCall?.font || bitmap.fontFace || ""}:${choice?.index ?? ""}`;
       const now = performance.now();
       let group = overlayState.lineGroups.get(key);
-      if (
-        !group ||
-        x < group.lastX - Math.max(8, height * 0.35) ||
-        now - group.updatedAt > 5e3
-      ) {
+      if (!group || x < group.lastX - Math.max(8, height * 0.35) || now - group.updatedAt > 5e3) {
         group = {
           owner,
           bitmap,
@@ -1901,10 +1547,7 @@
           baseline,
           fontSize,
           fontFace: fontFamilyWithEmojiFallback(
-            canvasFontFace(drawCall) ||
-              bitmap.fontFace ||
-              owner.standardFontFace?.() ||
-              "sans-serif",
+            canvasFontFace(drawCall) || bitmap.fontFace || owner.standardFontFace?.() || "sans-serif"
           ),
           ...fontTraits,
           choiceIndex: choice?.index,
@@ -1912,7 +1555,7 @@
           choiceLocalRect: choice?.rect,
           lastX: x,
           updatedAt: now,
-          entryKey: key,
+          entryKey: key
         };
         overlayState.lineGroups.set(key, group);
       }
@@ -1945,7 +1588,7 @@
         choiceIndex: group.choiceIndex,
         choiceSprite: group.choiceSprite,
         choiceLocalRect: group.choiceLocalRect,
-        updatedAt: group.updatedAt,
+        updatedAt: group.updatedAt
       });
     }
     function safeMeasure(bitmap, text) {
@@ -1959,10 +1602,7 @@
       try {
         return Math.max(1, context.measureText(text).width);
       } catch {
-        return Math.max(
-          1,
-          text.length * (canvasFontSize(context, bitmap, null) || 24) * 0.6,
-        );
+        return Math.max(1, text.length * (canvasFontSize(context, bitmap, null) || 24) * 0.6);
       }
     }
     function rpgMakerCanvasBaseline(drawCall, y, lineHeight, fontSize) {
@@ -1971,34 +1611,21 @@
       }
       const baseline = String(drawCall.textBaseline || "alphabetic");
       if (baseline === "alphabetic") return drawCall.y;
-      const ascent = Number.isFinite(drawCall.actualBoundingBoxAscent)
-        ? drawCall.actualBoundingBoxAscent
-        : fontSize * 0.8;
-      const descent = Number.isFinite(drawCall.actualBoundingBoxDescent)
-        ? drawCall.actualBoundingBoxDescent
-        : fontSize * 0.2;
-      if (baseline === "top" || baseline === "hanging")
-        return drawCall.y + ascent;
+      const ascent = Number.isFinite(drawCall.actualBoundingBoxAscent) ? drawCall.actualBoundingBoxAscent : fontSize * 0.8;
+      const descent = Number.isFinite(drawCall.actualBoundingBoxDescent) ? drawCall.actualBoundingBoxDescent : fontSize * 0.2;
+      if (baseline === "top" || baseline === "hanging") return drawCall.y + ascent;
       if (baseline === "middle") return drawCall.y + (ascent - descent) / 2;
-      if (baseline === "bottom" || baseline === "ideographic")
-        return drawCall.y - descent;
+      if (baseline === "bottom" || baseline === "ideographic") return drawCall.y - descent;
       return drawCall.y;
     }
     function rpgMakerChoiceInfo(owner, bitmap, x, y, width, height) {
       if (!owner || !rpgMakerChoiceWindow(owner)) return null;
-      const spriteChoices = Array.isArray(owner._selectImgList)
-        ? owner._selectImgList
-        : [];
-      const spriteIndex = spriteChoices.findIndex(
-        (sprite) => sprite?._textSprite?.bitmap === bitmap,
-      );
+      const spriteChoices = Array.isArray(owner._selectImgList) ? owner._selectImgList : [];
+      const spriteIndex = spriteChoices.findIndex((sprite) => sprite?._textSprite?.bitmap === bitmap);
       if (spriteIndex >= 0) {
         return { index: spriteIndex, sprite: spriteChoices[spriteIndex] };
       }
-      const maxItems = Math.min(
-        1e3,
-        Math.max(0, Number(owner.maxItems?.()) || 0),
-      );
+      const maxItems = Math.min(1e3, Math.max(0, Number(owner.maxItems?.()) || 0));
       let best = null;
       for (let index = 0; index < maxItems; index += 1) {
         let rect;
@@ -2012,21 +1639,12 @@
           x: Number(rect.x) || 0,
           y: Number(rect.y) || 0,
           width: Math.max(1, Number(rect.width) || 0),
-          height: Math.max(1, Number(rect.height) || height),
+          height: Math.max(1, Number(rect.height) || height)
         };
-        const overlapX = Math.max(
-          0,
-          Math.min(x + width, candidate.x + candidate.width) -
-            Math.max(x, candidate.x),
-        );
-        const overlapY = Math.max(
-          0,
-          Math.min(y + height, candidate.y + candidate.height) -
-            Math.max(y, candidate.y),
-        );
+        const overlapX = Math.max(0, Math.min(x + width, candidate.x + candidate.width) - Math.max(x, candidate.x));
+        const overlapY = Math.max(0, Math.min(y + height, candidate.y + candidate.height) - Math.max(y, candidate.y));
         const score = overlapX * overlapY;
-        if (score > 0 && (!best || score > best.score))
-          best = { index, rect: candidate, score };
+        if (score > 0 && (!best || score > best.score)) best = { index, rect: candidate, score };
       }
       return best ? { index: best.index, rect: best.rect } : null;
     }
@@ -2035,7 +1653,8 @@
       if (typeof ChoiceList === "function") {
         try {
           if (owner instanceof ChoiceList) return true;
-        } catch {}
+        } catch {
+        }
       }
       return /choice/iu.test(String(owner?.constructor?.name || ""));
     }
@@ -2047,33 +1666,28 @@
     function canvasTextTop(y, fontSize, height, baseline) {
       if (baseline === "top" || baseline === "hanging") return y;
       if (baseline === "middle") return y - height / 2;
-      if (baseline === "bottom" || baseline === "ideographic")
-        return y - height;
+      if (baseline === "bottom" || baseline === "ideographic") return y - height;
       return y - fontSize;
     }
     function adjustedTextLeft(x, maxWidth, measuredWidth, align) {
-      if (align === "center")
-        return x + Math.max(0, (maxWidth - measuredWidth) / 2);
+      if (align === "center") return x + Math.max(0, (maxWidth - measuredWidth) / 2);
       if (align === "right") return x + Math.max(0, maxWidth - measuredWidth);
       return x;
     }
     function alignmentTextBox(x, maxWidth, measuredWidth, align) {
       const widthLimit = Number(maxWidth) || 0;
-      const canUseBox =
-        (align === "center" || align === "right") &&
-        widthLimit > 0 &&
-        widthLimit < 4294967295;
+      const canUseBox = (align === "center" || align === "right") && widthLimit > 0 && widthLimit < 4294967295;
       if (canUseBox) {
         return {
           x,
           width: Math.max(widthLimit, 1),
-          textAlign: align,
+          textAlign: align
         };
       }
       return {
         x: adjustedTextLeft(x, maxWidth, measuredWidth, align),
         width: Math.max(measuredWidth, 1),
-        textAlign: "left",
+        textAlign: "left"
       };
     }
     return { install: installRpgMakerOverlayHooks };
@@ -2086,7 +1700,7 @@
     overlayState,
     removeEntry,
     scheduleFlush,
-    upsertEntry,
+    upsertEntry
   }) {
     function install() {
       if (overlayState.tyranoHooksInstalled) return;
@@ -2102,7 +1716,7 @@
             childList: true,
             characterData: true,
             attributes: true,
-            attributeFilter: ["class", "hidden", "style"],
+            attributeFilter: ["class", "hidden", "style"]
           });
         }
         if (document.fonts) {
@@ -2117,8 +1731,7 @@
       setTimeout(install, 250);
     }
     function scheduleScan() {
-      if (!overlayState.tyranoHooksInstalled || overlayState.tyranoScanFrame)
-        return;
+      if (!overlayState.tyranoHooksInstalled || overlayState.tyranoScanFrame) return;
       overlayState.tyranoScanFrame = requestAnimationFrame(() => {
         overlayState.tyranoScanFrame = 0;
         scanText();
@@ -2137,73 +1750,39 @@
             continue;
           }
           for (const paragraph of paragraphs) {
-            const styledSpans = paragraph.querySelectorAll(":scope > span");
-            if (styledSpans.length) {
-              for (const span of styledSpans) sources.add(span);
-            } else {
-              sources.add(paragraph);
-            }
+            sources.add(paragraph);
           }
         }
         for (const source of root.querySelectorAll(
-          ".chara_name_area, [data-event-tag='glink'], .vchat-text-inner",
+          ".chara_name_area, [data-event-tag='glink'], .vchat-text-inner"
         )) {
           sources.add(source);
         }
       }
       const activeKeys = /* @__PURE__ */ new Set();
       for (const source of sources) {
+        if (!domSourceIsVisible(source)) continue;
+        const sourceKey = `tyrano:${domSourceId(source)}`;
+        const renderedLines = source.matches?.(".message_inner > p") ? tyranoRenderedLines(source) : [];
+        if (renderedLines.length) {
+          const logText = renderedLines.map((line) => line.text).join("\n");
+          for (let index = 0; index < renderedLines.length; index += 1) {
+            const line = renderedLines[index];
+            const key = `${sourceKey}:line:${index}`;
+            activeKeys.add(key);
+            upsertEntry(key, tyranoOverlayEntry(source, line.text, {
+              domRect: line.rect,
+              logText,
+              skipTextLog: index > 0,
+              styleSource: line.styleSource
+            }));
+          }
+          continue;
+        }
         const text = tyranoSourceText(source);
-        if (!text || !domSourceIsVisible(source)) continue;
-        const key = `tyrano:${domSourceId(source)}`;
-        const style = getComputedStyle(source);
-        const scale = domVisualScale(source);
-        activeKeys.add(key);
-        upsertEntry(key, {
-          domSource: source,
-          text,
-          fontSize: parseCssNumber(style.fontSize) || 24,
-          fontFace: fontFamilyWithEmojiFallback(
-            style.fontFamily || "sans-serif",
-          ),
-          fontStyle: style.fontStyle,
-          fontWeight: style.fontWeight,
-          fontStretch: style.fontStretch,
-          fontVariant: style.fontVariant,
-          fontKerning: style.fontKerning,
-          fontOpticalSizing: style.fontOpticalSizing,
-          fontFeatureSettings: style.fontFeatureSettings,
-          fontVariationSettings: style.fontVariationSettings,
-          fontSynthesis: style.fontSynthesis,
-          lineHeightCss: style.lineHeight || "normal",
-          textAlign: style.textAlign || "left",
-          textAlignLast: style.textAlignLast,
-          direction: style.direction,
-          letterSpacing: style.letterSpacing,
-          wordSpacing: style.wordSpacing,
-          wordBreak: style.wordBreak,
-          overflowWrap: style.overflowWrap,
-          whiteSpace: style.whiteSpace,
-          writingMode: style.writingMode,
-          textOrientation: style.textOrientation,
-          textRendering: style.textRendering,
-          textTransform: style.textTransform,
-          textIndent: style.textIndent,
-          textDecorationLine: style.textDecorationLine,
-          textDecorationStyle: style.textDecorationStyle,
-          textDecorationThickness: style.textDecorationThickness,
-          paddingTop: style.paddingTop,
-          paddingRight: style.paddingRight,
-          paddingBottom: style.paddingBottom,
-          paddingLeft: style.paddingLeft,
-          borderTopWidth: style.borderTopWidth,
-          borderRightWidth: style.borderRightWidth,
-          borderBottomWidth: style.borderBottomWidth,
-          borderLeftWidth: style.borderLeftWidth,
-          visualScaleX: scale.x,
-          visualScaleY: scale.y,
-          updatedAt: performance.now(),
-        });
+        if (!text.trim()) continue;
+        activeKeys.add(sourceKey);
+        upsertEntry(sourceKey, tyranoOverlayEntry(source, text));
       }
       for (const [key, entry] of overlayState.entries) {
         if (entry.domSource && !activeKeys.has(key)) removeEntry(key, entry);
@@ -2215,11 +1794,7 @@
   function domSourceIsVisible(source) {
     if (!source?.isConnected) return false;
     const style = getComputedStyle(source);
-    if (
-      style.display === "none" ||
-      style.visibility === "hidden" ||
-      Number(style.opacity) === 0
-    ) {
+    if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) {
       return false;
     }
     const rect = source.getBoundingClientRect();
@@ -2234,13 +1809,162 @@
     return Array.from(document.querySelectorAll("#tyrano_base, #vchat_base"));
   }
   function tyranoSourceText(source) {
-    const text =
-      typeof source.innerText === "string"
-        ? source.innerText
-        : source.textContent;
-    return String(text || "")
-      .replace(/\u00a0/g, " ")
-      .trim();
+    const text = typeof source.innerText === "string" ? source.innerText : source.textContent;
+    return String(text || "").replace(/\r\n?/g, "\n").replace(/\u00a0/g, " ");
+  }
+  function tyranoOverlayWhiteSpace(text, computedWhiteSpace) {
+    if (!String(text).includes("\n")) return computedWhiteSpace || "pre-wrap";
+    return computedWhiteSpace === "pre" || computedWhiteSpace === "pre-wrap" || computedWhiteSpace === "break-spaces" ? computedWhiteSpace : "pre-wrap";
+  }
+  function tyranoOverlayEntry(source, text, options = {}) {
+    const boxStyle = getComputedStyle(source);
+    const style = getComputedStyle(options.styleSource || source);
+    const scale = domVisualScale(source);
+    const isMeasuredLine = Boolean(options.domRect);
+    return {
+      domSource: source,
+      domRect: options.domRect,
+      text,
+      logText: options.logText,
+      skipTextLog: options.skipTextLog,
+      fontSize: parseCssNumber(style.fontSize) || 24,
+      fontFace: fontFamilyWithEmojiFallback(style.fontFamily || "sans-serif"),
+      fontStyle: style.fontStyle,
+      fontWeight: style.fontWeight,
+      fontStretch: style.fontStretch,
+      fontVariant: style.fontVariant,
+      fontKerning: style.fontKerning,
+      fontOpticalSizing: style.fontOpticalSizing,
+      fontFeatureSettings: style.fontFeatureSettings,
+      fontVariationSettings: style.fontVariationSettings,
+      fontSynthesis: style.fontSynthesis,
+      lineHeightCss: isMeasuredLine ? `${options.domRect.height / scale.y}px` : style.lineHeight || "normal",
+      textAlign: isMeasuredLine ? "left" : style.textAlign || "left",
+      textAlignLast: style.textAlignLast,
+      direction: style.direction,
+      letterSpacing: style.letterSpacing,
+      wordSpacing: style.wordSpacing,
+      wordBreak: style.wordBreak,
+      overflowWrap: style.overflowWrap,
+      whiteSpace: isMeasuredLine ? "pre" : tyranoOverlayWhiteSpace(text, style.whiteSpace),
+      writingMode: style.writingMode,
+      textOrientation: style.textOrientation,
+      textRendering: style.textRendering,
+      textTransform: style.textTransform,
+      textIndent: isMeasuredLine ? "0px" : style.textIndent,
+      textDecorationLine: style.textDecorationLine,
+      textDecorationStyle: style.textDecorationStyle,
+      textDecorationThickness: style.textDecorationThickness,
+      paddingTop: isMeasuredLine ? "0px" : boxStyle.paddingTop,
+      paddingRight: isMeasuredLine ? "0px" : boxStyle.paddingRight,
+      paddingBottom: isMeasuredLine ? "0px" : boxStyle.paddingBottom,
+      paddingLeft: isMeasuredLine ? "0px" : boxStyle.paddingLeft,
+      borderTopWidth: isMeasuredLine ? "0px" : boxStyle.borderTopWidth,
+      borderRightWidth: isMeasuredLine ? "0px" : boxStyle.borderRightWidth,
+      borderBottomWidth: isMeasuredLine ? "0px" : boxStyle.borderBottomWidth,
+      borderLeftWidth: isMeasuredLine ? "0px" : boxStyle.borderLeftWidth,
+      visualScaleX: scale.x,
+      visualScaleY: scale.y,
+      updatedAt: performance.now()
+    };
+  }
+  function tyranoRenderedLines(source) {
+    const writingMode = getComputedStyle(source).writingMode || "horizontal-tb";
+    const vertical = writingMode.startsWith("vertical");
+    const lines = [];
+    const seenSegments = /* @__PURE__ */ new Set();
+    const walker = document.createTreeWalker(source, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    let node;
+    while (node = walker.nextNode()) {
+      if (!tyranoTextNodeIsSemantic(node, source)) continue;
+      for (const segment of graphemeSegments(String(node.data || ""))) {
+        const text = segment.text.replace(/\u00a0/g, " ");
+        if (!text || /[\r\n]/u.test(text)) continue;
+        range.setStart(node, segment.index);
+        range.setEnd(node, segment.index + segment.text.length);
+        const rect = firstRenderedRect(range.getClientRects());
+        if (!rect) continue;
+        const signature = [
+          text,
+          Math.round(rect.left * 2),
+          Math.round(rect.top * 2),
+          Math.round(rect.width * 2),
+          Math.round(rect.height * 2)
+        ].join(":");
+        if (seenSegments.has(signature)) continue;
+        seenSegments.add(signature);
+        let line = lines.find((candidate) => rectSharesVisualLine(candidate, rect, vertical));
+        if (!line) {
+          line = {
+            text: "",
+            left: rect.left,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.bottom,
+            styleSource: node.parentElement || source
+          };
+          lines.push(line);
+        }
+        line.text += text;
+        line.left = Math.min(line.left, rect.left);
+        line.top = Math.min(line.top, rect.top);
+        line.right = Math.max(line.right, rect.right);
+        line.bottom = Math.max(line.bottom, rect.bottom);
+      }
+    }
+    range.detach?.();
+    lines.sort((a, b) => vertical ? b.left - a.left : a.top - b.top);
+    return lines.filter((line) => line.text.trim()).map((line) => ({
+      text: line.text,
+      styleSource: line.styleSource,
+      rect: {
+        left: line.left,
+        top: line.top,
+        width: Math.max(1, line.right - line.left),
+        height: Math.max(1, line.bottom - line.top)
+      }
+    }));
+  }
+  function tyranoTextNodeIsSemantic(node, source) {
+    const parent = node.parentElement;
+    if (!parent || !source.contains(parent)) return false;
+    if (parent.closest(".img_next, .glyph_image, rt")) return false;
+    const decoratedCharacter = parent.closest(".char.text-shadow, .char.text-stroke");
+    if (!decoratedCharacter || !source.contains(decoratedCharacter)) return true;
+    const dummy = parent.closest(".dummy");
+    if (!dummy || dummy.parentElement !== decoratedCharacter) return false;
+    const dummies = decoratedCharacter.querySelectorAll(":scope > .dummy");
+    return dummy === dummies[dummies.length - 1];
+  }
+  function graphemeSegments(text) {
+    if (typeof Intl?.Segmenter === "function") {
+      const segmenter = new Intl.Segmenter(void 0, { granularity: "grapheme" });
+      return Array.from(segmenter.segment(text), (segment) => ({
+        index: segment.index,
+        text: segment.segment
+      }));
+    }
+    const output = [];
+    let index = 0;
+    for (const character of Array.from(text)) {
+      output.push({ index, text: character });
+      index += character.length;
+    }
+    return output;
+  }
+  function firstRenderedRect(rects) {
+    return Array.from(rects).find(
+      (rect) => rect.height > 0 && Number.isFinite(rect.left) && Number.isFinite(rect.top) && Number.isFinite(rect.right) && Number.isFinite(rect.bottom)
+    ) || null;
+  }
+  function rectSharesVisualLine(line, rect, vertical) {
+    const start = vertical ? "left" : "top";
+    const end = vertical ? "right" : "bottom";
+    const overlap = Math.min(line[end], rect[end]) - Math.max(line[start], rect[start]);
+    const lineSize = line[end] - line[start];
+    const rectSize = rect[end] - rect[start];
+    return overlap >= Math.min(lineSize, rectSize) * 0.5;
   }
   function parseCssNumber(value) {
     const parsed = Number.parseFloat(String(value || ""));
@@ -2255,7 +1979,7 @@
     const layoutHeight = parseCssNumber(style.height) || root.offsetHeight;
     return {
       x: positiveScale(rect.width, layoutWidth),
-      y: positiveScale(rect.height, layoutHeight),
+      y: positiveScale(rect.height, layoutHeight)
     };
   }
   function positiveScale(rendered, layout) {
@@ -2267,7 +1991,7 @@
   function createOverlayInputController({
     overlayState,
     postParentMessage,
-    settings,
+    settings
   }) {
     function installOverlayFocusReturn() {
       if (!overlayState.root || overlayState.focusReturnInstalled) return;
@@ -2279,10 +2003,7 @@
       };
       const clearOverlayText = (event) => {
         if (!overlayState.hoveredTextEntry) return;
-        if (
-          event.relatedTarget instanceof Node &&
-          overlayState.root.contains(event.relatedTarget)
-        ) {
+        if (event.relatedTarget instanceof Node && overlayState.root.contains(event.relatedTarget)) {
           return;
         }
         overlayState.hoveredTextEntry = null;
@@ -2294,10 +2015,7 @@
         event.stopPropagation();
       };
       const restoreGameFocusAfterSurfacePointer = (event) => {
-        if (
-          overlayTextEntry(event.target) ||
-          !eventTargetsGameSurface(event.target)
-        )
+        if (overlayTextEntry(event.target) || !eventTargetsGameSurface(event.target))
           return;
         if (!FOCUS_RETURN_EVENT_TYPES.includes(event.type)) return;
         window.setTimeout(() => {
@@ -2320,14 +2038,10 @@
         "dblclick",
         "contextmenu",
         "touchstart",
-        "touchend",
+        "touchend"
       ]) {
         window.addEventListener(type, consumeOverlayTextPointerEvent, true);
-        window.addEventListener(
-          type,
-          restoreGameFocusAfterSurfacePointer,
-          true,
-        );
+        window.addEventListener(type, restoreGameFocusAfterSurfacePointer, true);
       }
       overlayState.root.addEventListener("pointerover", trackOverlayText, true);
       overlayState.root.addEventListener("pointermove", trackOverlayText, true);
@@ -2346,14 +2060,12 @@
         () => {
           if (document.visibilityState !== "visible") clearGuardState();
         },
-        true,
+        true
       );
     }
     function dictionaryGuardActive() {
       return Boolean(
-        settings.overlayEnabled &&
-        settings.dictionaryDismissGuard?.enabled &&
-        settings.dictionaryDismissGuard.triggers?.length,
+        settings.overlayEnabled && settings.dictionaryDismissGuard?.enabled && settings.dictionaryDismissGuard.triggers?.length
       );
     }
     function installDictionaryGuardInputHooks() {
@@ -2361,17 +2073,13 @@
       const install = () => {
         if (overlayState.inputGuardInstalled) return true;
         const input = window.Input;
-        if (
-          !input ||
-          typeof input._onKeyDown !== "function" ||
-          typeof input._onKeyUp !== "function"
-        ) {
+        if (!input || typeof input._onKeyDown !== "function" || typeof input._onKeyUp !== "function") {
           return false;
         }
         overlayState.inputGuardInstalled = true;
         const originalKeyDown = input._onKeyDown;
         const originalKeyUp = input._onKeyUp;
-        input._onKeyDown = function (event) {
+        input._onKeyDown = function(event) {
           if (dictionaryGuardInputShouldBlock(event)) {
             overlayState.consumedGuardKeyCodes.add(event.code);
             releaseRpgMakerInputState(event);
@@ -2380,11 +2088,8 @@
           }
           return originalKeyDown.apply(this, arguments);
         };
-        input._onKeyUp = function (event) {
-          if (
-            overlayState.consumedGuardKeyCodes.has(event.code) ||
-            dictionaryGuardInputShouldBlock(event)
-          ) {
+        input._onKeyUp = function(event) {
+          if (overlayState.consumedGuardKeyCodes.has(event.code) || dictionaryGuardInputShouldBlock(event)) {
             overlayState.consumedGuardKeyCodes.delete(event.code);
             releaseRpgMakerInputState(event);
             consumeEvent(event);
@@ -2406,7 +2111,8 @@
       const target = canvas || document.body || document.documentElement;
       try {
         window.focus();
-      } catch {}
+      } catch {
+      }
       focusElement(document.documentElement);
       focusElement(document.body);
       focusElement(target);
@@ -2420,10 +2126,7 @@
       maybeConsumeDictionaryDismissKeyEvent(event);
     }
     function maybeConsumeDictionaryDismissKeyEvent(event) {
-      if (
-        event.type === "keyup" &&
-        overlayState.consumedGuardKeyCodes.has(event.code)
-      ) {
+      if (event.type === "keyup" && overlayState.consumedGuardKeyCodes.has(event.code)) {
         overlayState.consumedGuardKeyCodes.delete(event.code);
         releaseRpgMakerInputState(event);
         consumeEvent(event);
@@ -2436,8 +2139,8 @@
         return true;
       }
       if (!dictionaryGuardActive()) return false;
-      const match = settings.dictionaryDismissGuard.triggers.find((trigger) =>
-        guardTriggerMatchesKeyEvent(event, trigger),
+      const match = settings.dictionaryDismissGuard.triggers.find(
+        (trigger) => guardTriggerMatchesKeyEvent(event, trigger)
       );
       if (!match) return false;
       releaseRpgMakerInputState(event);
@@ -2450,15 +2153,12 @@
     }
     function dictionaryGuardInputShouldBlock(event) {
       if (!dictionaryGuardActive()) return false;
-      return settings.dictionaryDismissGuard.triggers.some((trigger) =>
-        guardTriggerMatchesKeyEvent(event, trigger),
+      return settings.dictionaryDismissGuard.triggers.some(
+        (trigger) => guardTriggerMatchesKeyEvent(event, trigger)
       );
     }
     function guardReleaseMatchesKeyEvent(event) {
-      if (
-        !settings.dictionaryDismissGuard?.enabled ||
-        !settings.dictionaryDismissGuard.triggers?.length
-      ) {
+      if (!settings.dictionaryDismissGuard?.enabled || !settings.dictionaryDismissGuard.triggers?.length) {
         return false;
       }
       return settings.dictionaryDismissGuard.triggers.some((trigger) => {
@@ -2472,13 +2172,7 @@
       return modifierOnlyTriggerMatchesEventCode(event.code, trigger);
     }
     function modifierOnlyTriggerMatchesEventCode(code, trigger) {
-      return (
-        (trigger.altKey && (code === "AltLeft" || code === "AltRight")) ||
-        (trigger.ctrlKey &&
-          (code === "ControlLeft" || code === "ControlRight")) ||
-        (trigger.metaKey && (code === "MetaLeft" || code === "MetaRight")) ||
-        (trigger.shiftKey && (code === "ShiftLeft" || code === "ShiftRight"))
-      );
+      return trigger.altKey && (code === "AltLeft" || code === "AltRight") || trigger.ctrlKey && (code === "ControlLeft" || code === "ControlRight") || trigger.metaKey && (code === "MetaLeft" || code === "MetaRight") || trigger.shiftKey && (code === "ShiftLeft" || code === "ShiftRight");
     }
     function releaseRpgMakerInputState(event) {
       const input = window.Input;
@@ -2499,25 +2193,17 @@
       dictionaryGuardActive,
       focusGameTarget,
       installDictionaryGuardInputHooks,
-      installOverlayFocusReturn,
+      installOverlayFocusReturn
     };
   }
   function overlayTextEntry(target) {
-    return target instanceof Element
-      ? target.closest(".mz-player-text-overlay-entry")
-      : null;
+    return target instanceof Element ? target.closest(".mz-player-text-overlay-entry") : null;
   }
   function eventTargetsGameSurface(target) {
-    if (
-      target === document ||
-      target === document.body ||
-      target === document.documentElement
-    ) {
+    if (target === document || target === document.body || target === document.documentElement) {
       return true;
     }
-    return (
-      target instanceof Element && Boolean(target.closest("canvas, video"))
-    );
+    return target instanceof Element && Boolean(target.closest("canvas, video"));
   }
   function focusElement(target) {
     if (!target || typeof target.focus !== "function") return;
@@ -2530,7 +2216,8 @@
     } catch {
       try {
         target.focus();
-      } catch {}
+      } catch {
+      }
     }
   }
 
@@ -2544,7 +2231,7 @@
     overlayIsActive,
     overlayState,
     removeEntry,
-    scaledCssLength: scaledCssLength2,
+    scaledCssLength: scaledCssLength2
   }) {
     function scheduleFlush() {
       if (overlayState.raf) return;
@@ -2568,22 +2255,12 @@
           continue;
         }
         if (!entry.element) {
-          const rpgSource =
-            !entry.domSource && !entry.constructSource && !entry.cocosSource;
-          entry.element = document.createElement(
-            entry.domSource ? "div" : "span",
-          );
-          entry.element.className = entry.domSource
-            ? "mz-player-text-overlay-entry mz-player-text-overlay-entry-dom"
-            : entry.constructSource
-              ? "mz-player-text-overlay-entry mz-player-text-overlay-entry-construct2"
-              : entry.cocosSource
-                ? "mz-player-text-overlay-entry mz-player-text-overlay-entry-cocos"
-                : "mz-player-text-overlay-entry mz-player-text-overlay-entry-rpg";
+          const rpgSource = !entry.domSource && !entry.constructSource && !entry.cocosSource;
+          entry.element = document.createElement(entry.domSource ? "div" : "span");
+          entry.element.className = entry.domSource ? "mz-player-text-overlay-entry mz-player-text-overlay-entry-dom" : entry.constructSource ? "mz-player-text-overlay-entry mz-player-text-overlay-entry-construct2" : entry.cocosSource ? "mz-player-text-overlay-entry mz-player-text-overlay-entry-cocos" : "mz-player-text-overlay-entry mz-player-text-overlay-entry-rpg";
           if (rpgSource) {
             entry.textElement = document.createElement("span");
-            entry.textElement.className =
-              "mz-player-text-overlay-entry-rpg-text";
+            entry.textElement.className = "mz-player-text-overlay-entry-rpg-text";
             entry.element.appendChild(entry.textElement);
           }
           overlayState.root.appendChild(entry.element);
@@ -2591,31 +2268,19 @@
         if (entry.constructSource) {
           layoutConstruct2Entry(entry, rect);
         } else {
-          const displayText = entry.cocosSource
-            ? entry.displayText || entry.text
-            : entry.text;
+          const displayText = entry.cocosSource ? entry.displayText || entry.text : entry.text;
           const textElement = entry.textElement || entry.element;
-          if (!usesExactRpgMakerCharacterPositions(entry)) {
-            entry.characterSegmentSignature = "";
-            if (textElement.textContent !== displayText)
-              textElement.textContent = displayText;
-          }
+          if (textElement.textContent !== displayText) textElement.textContent = displayText;
         }
         entry.element.setAttribute("aria-label", entry.text);
         entry.element.dataset.rpgText = entry.text;
         entry.element.dataset.gameText = entry.text;
         entry.element.removeAttribute("title");
         const isChoice = Number.isInteger(entry.choiceIndex);
-        entry.element.classList.toggle(
-          "mz-player-text-overlay-entry-choice",
-          isChoice,
-        );
+        entry.element.classList.toggle("mz-player-text-overlay-entry-choice", isChoice);
         if (isChoice) {
           entry.element.setAttribute("role", "option");
-          entry.element.setAttribute(
-            "aria-selected",
-            String(Number(entry.owner?.index?.()) === entry.choiceIndex),
-          );
+          entry.element.setAttribute("aria-selected", String(Number(entry.owner?.index?.()) === entry.choiceIndex));
           entry.element.dataset.choiceIndex = String(entry.choiceIndex);
         } else {
           entry.element.removeAttribute("role");
@@ -2624,254 +2289,67 @@
         }
         setStyleIfChanged(entry.element, "left", `${rect.left}px`);
         setStyleIfChanged(entry.element, "top", `${rect.top}px`);
-        setStyleIfChanged(
-          entry.element,
-          "width",
-          `${Math.max(1, rect.width)}px`,
-        );
-        setStyleIfChanged(
-          entry.element,
-          "height",
-          `${Math.max(1, rect.height)}px`,
-        );
-        setStyleIfChanged(
-          entry.element,
-          "textAlign",
-          entry.textAlign || "left",
-        );
+        setStyleIfChanged(entry.element, "width", `${Math.max(1, rect.width)}px`);
+        setStyleIfChanged(entry.element, "height", `${Math.max(1, rect.height)}px`);
+        setStyleIfChanged(entry.element, "textAlign", entry.textAlign || "left");
         const usesEngineTransform = entry.cocosSource || entry.constructSource;
-        setStyleIfChanged(
-          entry.element,
-          "transformOrigin",
-          usesEngineTransform ? "0 0" : "",
-        );
-        setStyleIfChanged(
-          entry.element,
-          "transform",
-          usesEngineTransform ? rect.transform || "none" : "",
-        );
+        setStyleIfChanged(entry.element, "transformOrigin", usesEngineTransform ? "0 0" : "");
+        setStyleIfChanged(entry.element, "transform", usesEngineTransform ? rect.transform || "none" : "");
         if (entry.domSource) {
           const scaleX = entry.visualScaleX || 1;
           const scaleY = entry.visualScaleY || 1;
-          const fontSize = Math.max(
-            1,
-            (entry.fontSize || rect.fontSize) * scaleY,
-          );
-          setStyleIfChanged(
-            entry.element,
-            "fontFamily",
-            entry.fontFace || "sans-serif",
-          );
+          const fontSize = Math.max(1, (entry.fontSize || rect.fontSize) * scaleY);
+          setStyleIfChanged(entry.element, "fontFamily", entry.fontFace || "sans-serif");
           setStyleIfChanged(entry.element, "fontSize", `${fontSize}px`);
-          setStyleIfChanged(
-            entry.element,
-            "fontStyle",
-            entry.fontStyle || "normal",
-          );
-          setStyleIfChanged(
-            entry.element,
-            "fontWeight",
-            entry.fontWeight || "normal",
-          );
-          setStyleIfChanged(
-            entry.element,
-            "fontStretch",
-            entry.fontStretch || "normal",
-          );
-          setStyleIfChanged(
-            entry.element,
-            "fontVariant",
-            entry.fontVariant || "normal",
-          );
-          setStyleIfChanged(
-            entry.element,
-            "fontKerning",
-            entry.fontKerning || "auto",
-          );
-          setStyleIfChanged(
-            entry.element,
-            "fontOpticalSizing",
-            entry.fontOpticalSizing || "auto",
-          );
-          setStyleIfChanged(
-            entry.element,
-            "fontFeatureSettings",
-            entry.fontFeatureSettings || "normal",
-          );
-          setStyleIfChanged(
-            entry.element,
-            "fontVariationSettings",
-            entry.fontVariationSettings || "normal",
-          );
-          setStyleIfChanged(
-            entry.element,
-            "fontSynthesis",
-            entry.fontSynthesis || "weight style small-caps",
-          );
-          setStyleIfChanged(
-            entry.element,
-            "lineHeight",
-            scaledCssLength2(entry.lineHeightCss, scaleY),
-          );
-          setStyleIfChanged(
-            entry.element,
-            "whiteSpace",
-            entry.whiteSpace || "pre-wrap",
-          );
-          setStyleIfChanged(
-            entry.element,
-            "direction",
-            entry.direction || "ltr",
-          );
-          setStyleIfChanged(
-            entry.element,
-            "letterSpacing",
-            scaledCssLength2(entry.letterSpacing, scaleX),
-          );
-          setStyleIfChanged(
-            entry.element,
-            "wordSpacing",
-            scaledCssLength2(entry.wordSpacing, scaleX),
-          );
-          setStyleIfChanged(
-            entry.element,
-            "wordBreak",
-            entry.wordBreak || "normal",
-          );
-          setStyleIfChanged(
-            entry.element,
-            "overflowWrap",
-            entry.overflowWrap || "normal",
-          );
-          setStyleIfChanged(
-            entry.element,
-            "writingMode",
-            entry.writingMode || "horizontal-tb",
-          );
-          setStyleIfChanged(
-            entry.element,
-            "textOrientation",
-            entry.textOrientation || "mixed",
-          );
-          setStyleIfChanged(
-            entry.element,
-            "textRendering",
-            entry.textRendering || "auto",
-          );
-          setStyleIfChanged(
-            entry.element,
-            "textTransform",
-            entry.textTransform || "none",
-          );
-          setStyleIfChanged(
-            entry.element,
-            "textAlignLast",
-            entry.textAlignLast || "auto",
-          );
-          setStyleIfChanged(
-            entry.element,
-            "textIndent",
-            scaledCssLength2(entry.textIndent, scaleX),
-          );
-          setStyleIfChanged(
-            entry.element,
-            "textDecorationLine",
-            entry.textDecorationLine || "none",
-          );
-          setStyleIfChanged(
-            entry.element,
-            "textDecorationStyle",
-            entry.textDecorationStyle || "solid",
-          );
-          setStyleIfChanged(
-            entry.element,
-            "textDecorationThickness",
-            scaledCssLength2(entry.textDecorationThickness, scaleY),
-          );
-          setStyleIfChanged(
-            entry.element,
-            "paddingTop",
-            scaledCssLength2(entry.paddingTop, scaleY),
-          );
-          setStyleIfChanged(
-            entry.element,
-            "paddingRight",
-            scaledCssLength2(entry.paddingRight, scaleX),
-          );
-          setStyleIfChanged(
-            entry.element,
-            "paddingBottom",
-            scaledCssLength2(entry.paddingBottom, scaleY),
-          );
-          setStyleIfChanged(
-            entry.element,
-            "paddingLeft",
-            scaledCssLength2(entry.paddingLeft, scaleX),
-          );
+          setStyleIfChanged(entry.element, "fontStyle", entry.fontStyle || "normal");
+          setStyleIfChanged(entry.element, "fontWeight", entry.fontWeight || "normal");
+          setStyleIfChanged(entry.element, "fontStretch", entry.fontStretch || "normal");
+          setStyleIfChanged(entry.element, "fontVariant", entry.fontVariant || "normal");
+          setStyleIfChanged(entry.element, "fontKerning", entry.fontKerning || "auto");
+          setStyleIfChanged(entry.element, "fontOpticalSizing", entry.fontOpticalSizing || "auto");
+          setStyleIfChanged(entry.element, "fontFeatureSettings", entry.fontFeatureSettings || "normal");
+          setStyleIfChanged(entry.element, "fontVariationSettings", entry.fontVariationSettings || "normal");
+          setStyleIfChanged(entry.element, "fontSynthesis", entry.fontSynthesis || "weight style small-caps");
+          setStyleIfChanged(entry.element, "lineHeight", scaledCssLength2(entry.lineHeightCss, scaleY));
+          setStyleIfChanged(entry.element, "whiteSpace", entry.whiteSpace || "pre-wrap");
+          setStyleIfChanged(entry.element, "direction", entry.direction || "ltr");
+          setStyleIfChanged(entry.element, "letterSpacing", scaledCssLength2(entry.letterSpacing, scaleX));
+          setStyleIfChanged(entry.element, "wordSpacing", scaledCssLength2(entry.wordSpacing, scaleX));
+          setStyleIfChanged(entry.element, "wordBreak", entry.wordBreak || "normal");
+          setStyleIfChanged(entry.element, "overflowWrap", entry.overflowWrap || "normal");
+          setStyleIfChanged(entry.element, "writingMode", entry.writingMode || "horizontal-tb");
+          setStyleIfChanged(entry.element, "textOrientation", entry.textOrientation || "mixed");
+          setStyleIfChanged(entry.element, "textRendering", entry.textRendering || "auto");
+          setStyleIfChanged(entry.element, "textTransform", entry.textTransform || "none");
+          setStyleIfChanged(entry.element, "textAlignLast", entry.textAlignLast || "auto");
+          setStyleIfChanged(entry.element, "textIndent", scaledCssLength2(entry.textIndent, scaleX));
+          setStyleIfChanged(entry.element, "textDecorationLine", entry.textDecorationLine || "none");
+          setStyleIfChanged(entry.element, "textDecorationStyle", entry.textDecorationStyle || "solid");
+          setStyleIfChanged(entry.element, "textDecorationThickness", scaledCssLength2(entry.textDecorationThickness, scaleY));
+          setStyleIfChanged(entry.element, "paddingTop", scaledCssLength2(entry.paddingTop, scaleY));
+          setStyleIfChanged(entry.element, "paddingRight", scaledCssLength2(entry.paddingRight, scaleX));
+          setStyleIfChanged(entry.element, "paddingBottom", scaledCssLength2(entry.paddingBottom, scaleY));
+          setStyleIfChanged(entry.element, "paddingLeft", scaledCssLength2(entry.paddingLeft, scaleX));
           setStyleIfChanged(entry.element, "boxSizing", "border-box");
           setStyleIfChanged(entry.element, "borderStyle", "solid");
           setStyleIfChanged(entry.element, "borderColor", "transparent");
-          setStyleIfChanged(
-            entry.element,
-            "borderTopWidth",
-            scaledCssLength2(entry.borderTopWidth, scaleY),
-          );
-          setStyleIfChanged(
-            entry.element,
-            "borderRightWidth",
-            scaledCssLength2(entry.borderRightWidth, scaleX),
-          );
-          setStyleIfChanged(
-            entry.element,
-            "borderBottomWidth",
-            scaledCssLength2(entry.borderBottomWidth, scaleY),
-          );
-          setStyleIfChanged(
-            entry.element,
-            "borderLeftWidth",
-            scaledCssLength2(entry.borderLeftWidth, scaleX),
-          );
+          setStyleIfChanged(entry.element, "borderTopWidth", scaledCssLength2(entry.borderTopWidth, scaleY));
+          setStyleIfChanged(entry.element, "borderRightWidth", scaledCssLength2(entry.borderRightWidth, scaleX));
+          setStyleIfChanged(entry.element, "borderBottomWidth", scaledCssLength2(entry.borderBottomWidth, scaleY));
+          setStyleIfChanged(entry.element, "borderLeftWidth", scaledCssLength2(entry.borderLeftWidth, scaleX));
         } else if (entry.constructSource) {
           setStyleIfChanged(entry.element, "whiteSpace", "pre");
         } else if (entry.cocosSource) {
           setStyleIfChanged(entry.element, "whiteSpace", "pre");
-          setStyleIfChanged(
-            entry.element,
-            "fontFamily",
-            entry.fontFace || "sans-serif",
-          );
-          setStyleIfChanged(
-            entry.element,
-            "fontSize",
-            `${Math.max(1, rect.fontSize)}px`,
-          );
-          setStyleIfChanged(
-            entry.element,
-            "fontStyle",
-            entry.fontStyle || "normal",
-          );
-          setStyleIfChanged(
-            entry.element,
-            "fontWeight",
-            entry.fontWeight || "400",
-          );
+          setStyleIfChanged(entry.element, "fontFamily", entry.fontFace || "sans-serif");
+          setStyleIfChanged(entry.element, "fontSize", `${Math.max(1, rect.fontSize)}px`);
+          setStyleIfChanged(entry.element, "fontStyle", entry.fontStyle || "normal");
+          setStyleIfChanged(entry.element, "fontWeight", entry.fontWeight || "400");
           setStyleIfChanged(entry.element, "fontKerning", "auto");
           setStyleIfChanged(entry.element, "fontVariantLigatures", "normal");
-          setStyleIfChanged(
-            entry.element,
-            "textDecorationLine",
-            entry.textDecoration || "none",
-          );
-          setStyleIfChanged(
-            entry.element,
-            "lineHeight",
-            `${Math.max(1, entry.lineHeight || rect.fontSize * 1.2)}px`,
-          );
-          setStyleIfChanged(
-            entry.element,
-            "paddingTop",
-            `${Math.max(0, entry.paddingTop || 0)}px`,
-          );
+          setStyleIfChanged(entry.element, "textDecorationLine", entry.textDecoration || "none");
+          setStyleIfChanged(entry.element, "lineHeight", `${Math.max(1, entry.lineHeight || rect.fontSize * 1.2)}px`);
+          setStyleIfChanged(entry.element, "paddingTop", `${Math.max(0, entry.paddingTop || 0)}px`);
         } else {
           const textElement = entry.textElement || entry.element;
           const textRect = rect.textRect || {
@@ -2879,160 +2357,40 @@
             top: 0,
             width: rect.width,
             height: rect.height,
-            baselineOffset: rect.baselineOffset,
+            baselineOffset: rect.baselineOffset
           };
-          setStyleIfChanged(
-            textElement,
-            "left",
-            `${roundCssPixel(textRect.left)}px`,
-          );
-          setStyleIfChanged(
-            textElement,
-            "top",
-            `${roundCssPixel(textRect.top)}px`,
-          );
-          setStyleIfChanged(
-            textElement,
-            "width",
-            `${Math.max(1, roundCssPixel(textRect.width))}px`,
-          );
-          setStyleIfChanged(
-            textElement,
-            "height",
-            `${Math.max(1, roundCssPixel(textRect.height))}px`,
-          );
+          setStyleIfChanged(textElement, "left", `${roundCssPixel(textRect.left)}px`);
+          setStyleIfChanged(textElement, "top", `${roundCssPixel(textRect.top)}px`);
+          setStyleIfChanged(textElement, "width", `${Math.max(1, roundCssPixel(textRect.width))}px`);
+          setStyleIfChanged(textElement, "height", `${Math.max(1, roundCssPixel(textRect.height))}px`);
           setStyleIfChanged(textElement, "whiteSpace", "pre");
-          setStyleIfChanged(
-            textElement,
-            "fontFamily",
-            entry.fontFace || "sans-serif",
-          );
-          setStyleIfChanged(
-            textElement,
-            "fontSize",
-            `${Math.max(1, rect.fontSize)}px`,
-          );
-          setStyleIfChanged(
-            textElement,
-            "fontStyle",
-            entry.fontStyle || "normal",
-          );
-          setStyleIfChanged(
-            textElement,
-            "fontWeight",
-            entry.fontWeight || "400",
-          );
-          setStyleIfChanged(
-            textElement,
-            "fontStretch",
-            entry.fontStretch || "normal",
-          );
-          setStyleIfChanged(
-            textElement,
-            "fontVariantCaps",
-            entry.fontVariantCaps || "normal",
-          );
-          setStyleIfChanged(
-            textElement,
-            "fontKerning",
-            entry.fontKerning || "auto",
-          );
+          setStyleIfChanged(textElement, "fontFamily", entry.fontFace || "sans-serif");
+          setStyleIfChanged(textElement, "fontSize", `${Math.max(1, rect.fontSize)}px`);
+          setStyleIfChanged(textElement, "fontStyle", entry.fontStyle || "normal");
+          setStyleIfChanged(textElement, "fontWeight", entry.fontWeight || "400");
+          setStyleIfChanged(textElement, "fontStretch", entry.fontStretch || "normal");
+          setStyleIfChanged(textElement, "fontVariantCaps", entry.fontVariantCaps || "normal");
+          setStyleIfChanged(textElement, "fontKerning", entry.fontKerning || "auto");
           setStyleIfChanged(textElement, "fontVariantLigatures", "normal");
           setStyleIfChanged(textElement, "fontSynthesis", "weight style");
-          setStyleIfChanged(
-            textElement,
-            "letterSpacing",
-            entry.letterSpacing || "0px",
-          );
-          setStyleIfChanged(
-            textElement,
-            "wordSpacing",
-            entry.wordSpacing || "0px",
-          );
-          setStyleIfChanged(
-            textElement,
-            "direction",
-            entry.direction === "rtl" ? "rtl" : "ltr",
-          );
-          setStyleIfChanged(
-            textElement,
-            "textAlign",
-            entry.textAlign || "left",
-          );
+          setStyleIfChanged(textElement, "letterSpacing", entry.letterSpacing || "0px");
+          setStyleIfChanged(textElement, "wordSpacing", entry.wordSpacing || "0px");
+          setStyleIfChanged(textElement, "direction", entry.direction === "rtl" ? "rtl" : "ltr");
+          setStyleIfChanged(textElement, "textAlign", entry.textAlign || "left");
           setStyleIfChanged(textElement, "textRendering", "auto");
-          layoutRpgMakerCharacterSegments(entry, textElement, textRect);
           if (Number.isFinite(textRect.baselineOffset)) {
             const domBaseline = domTextBaselineOffset(entry, rect.fontSize);
             const baselineShift = textRect.baselineOffset - domBaseline;
             setStyleIfChanged(textElement, "lineHeight", "normal");
             setStyleIfChanged(textElement, "transformOrigin", "0 0");
-            setStyleIfChanged(
-              textElement,
-              "transform",
-              `translateY(${roundCssPixel(baselineShift)}px)`,
-            );
+            setStyleIfChanged(textElement, "transform", `translateY(${roundCssPixel(baselineShift)}px)`);
           } else {
-            setStyleIfChanged(
-              textElement,
-              "lineHeight",
-              `${Math.max(1, textRect.height)}px`,
-            );
+            setStyleIfChanged(textElement, "lineHeight", `${Math.max(1, textRect.height)}px`);
             setStyleIfChanged(textElement, "transformOrigin", "");
             setStyleIfChanged(textElement, "transform", "");
           }
         }
       }
-    }
-    function usesExactRpgMakerCharacterPositions(entry) {
-      if (
-        !Array.isArray(entry.characterSegments) ||
-        entry.characterSegments.length < 2
-      )
-        return false;
-      const MessageWindow = window.Window_Message;
-      if (typeof MessageWindow === "function") {
-        try {
-          if (entry.owner instanceof MessageWindow) return true;
-        } catch {}
-      }
-      return entry.owner?.constructor?.name === "Window_Message";
-    }
-    function layoutRpgMakerCharacterSegments(entry, textElement, textRect) {
-      if (!usesExactRpgMakerCharacterPositions(entry)) return;
-      const segments = entry.characterSegments;
-      const signature = segments
-        .map((segment) => `${segment.text}:${segment.x}:${segment.width}`)
-        .join("|");
-      if (entry.characterSegmentSignature !== signature) {
-        const fragment = document.createDocumentFragment();
-        for (const segment of segments) {
-          const element = document.createElement("span");
-          element.className = "mz-player-text-overlay-entry-rpg-segment";
-          element.textContent = segment.text;
-          fragment.appendChild(element);
-        }
-        textElement.replaceChildren(fragment);
-        entry.characterSegmentElements = [...textElement.children];
-        entry.characterSegmentSignature = signature;
-      }
-      const sourceX = Number.isFinite(textRect.sourceX)
-        ? textRect.sourceX
-        : entry.x;
-      const sourceScaleX = Number.isFinite(textRect.sourceScaleX)
-        ? textRect.sourceScaleX
-        : textRect.width / Math.max(1, entry.width);
-      for (let index = 0; index < segments.length; index += 1) {
-        const segment = segments[index];
-        const element = entry.characterSegmentElements?.[index];
-        if (!element) continue;
-        setStyleIfChanged(
-          element,
-          "left",
-          `${roundCssPixel((segment.x - sourceX) * sourceScaleX)}px`,
-        );
-      }
-      setStyleIfChanged(textElement, "fontKerning", "none");
-      setStyleIfChanged(textElement, "fontVariantLigatures", "none");
     }
     function layoutConstruct2Entry(entry, rect) {
       const source = entry.constructSource;
@@ -3040,73 +2398,34 @@
       const sourceHeight = Math.abs(Number(source.height));
       const characterHeight = Number(source.characterHeight);
       const characterScale = Number(source.characterScale) || 1;
-      const lines = Array.isArray(source.lines)
-        ? source.lines.map((line) => ({
-            text: String(line?.text ?? ""),
-            width: Math.max(0, Number(line?.width) || 0),
-          }))
-        : [];
-      const canPlaceSpritefontLines =
-        sourceWidth > 0 &&
-        sourceHeight > 0 &&
-        characterHeight > 0 &&
-        lines.length > 0;
+      const lines = Array.isArray(source.lines) ? source.lines.map((line) => ({
+        text: String(line?.text ?? ""),
+        width: Math.max(0, Number(line?.width) || 0)
+      })) : [];
+      const canPlaceSpritefontLines = sourceWidth > 0 && sourceHeight > 0 && characterHeight > 0 && lines.length > 0;
       if (!canPlaceSpritefontLines) {
-        if (
-          entry.renderedConstructText !== entry.text ||
-          entry.constructLineElements
-        ) {
+        if (entry.renderedConstructText !== entry.text || entry.constructLineElements) {
           entry.element.textContent = entry.text;
           entry.constructLineElements = null;
           entry.renderedConstructText = entry.text;
         }
-        setStyleIfChanged(
-          entry.element,
-          "fontFamily",
-          entry.fontFace || "sans-serif",
-        );
-        setStyleIfChanged(
-          entry.element,
-          "fontSize",
-          `${Math.max(1, rect.fontSize)}px`,
-        );
-        setStyleIfChanged(
-          entry.element,
-          "fontStyle",
-          entry.fontStyle || "normal",
-        );
-        setStyleIfChanged(
-          entry.element,
-          "fontWeight",
-          entry.fontWeight || "400",
-        );
-        setStyleIfChanged(
-          entry.element,
-          "lineHeight",
-          `${Math.max(1, rect.lineHeight || rect.fontSize * 1.2)}px`,
-        );
-        setStyleIfChanged(
-          entry.element,
-          "paddingTop",
-          `${Math.max(0, rect.paddingTop || 0)}px`,
-        );
+        setStyleIfChanged(entry.element, "fontFamily", entry.fontFace || "sans-serif");
+        setStyleIfChanged(entry.element, "fontSize", `${Math.max(1, rect.fontSize)}px`);
+        setStyleIfChanged(entry.element, "fontStyle", entry.fontStyle || "normal");
+        setStyleIfChanged(entry.element, "fontWeight", entry.fontWeight || "400");
+        setStyleIfChanged(entry.element, "lineHeight", `${Math.max(1, rect.lineHeight || rect.fontSize * 1.2)}px`);
+        setStyleIfChanged(entry.element, "paddingTop", `${Math.max(0, rect.paddingTop || 0)}px`);
         return;
       }
-      const characterWidth = Math.max(
-        1,
-        Number(source.characterWidth) || characterHeight,
-      );
+      const characterWidth = Math.max(1, Number(source.characterWidth) || characterHeight);
       const characterSpacing = Number(source.characterSpacing) || 0;
       const lineSignature = [
         characterWidth,
         characterScale,
         characterSpacing,
-        lines.map((line) => `${line.width}:${line.text}`).join("\n"),
+        lines.map((line) => `${line.width}:${line.text}`).join("\n")
       ].join("|");
-      if (
-        entry.constructLineSignature !== lineSignature ||
-        !entry.constructLineElements
-      ) {
+      if (entry.constructLineSignature !== lineSignature || !entry.constructLineElements) {
         entry.element.textContent = "";
         entry.constructLineElements = lines.map((line) => {
           const element = document.createElement("span");
@@ -3115,11 +2434,10 @@
           element.replaceChildren(
             ...construct2TextSegments2(line.text).map((character) => {
               const characterElement = document.createElement("span");
-              characterElement.className =
-                "mz-player-text-overlay-entry-construct2-character";
+              characterElement.className = "mz-player-text-overlay-entry-construct2-character";
               characterElement.textContent = character;
               return characterElement;
-            }),
+            })
           );
           entry.element.appendChild(element);
           return element;
@@ -3129,96 +2447,65 @@
       }
       setStyleIfChanged(entry.element, "paddingTop", "0px");
       if (!overlayState.measureContext) {
-        overlayState.measureContext = document
-          .createElement("canvas")
-          .getContext("2d");
+        overlayState.measureContext = document.createElement("canvas").getContext("2d");
       }
       const scaleX = rect.width / sourceWidth;
       const scaleY = rect.height / sourceHeight;
       const cellHeight = Math.max(1, characterHeight * characterScale * scaleY);
       const lineStep = Math.max(
         1,
-        (characterHeight * characterScale + (Number(source.lineHeight) || 0)) *
-          scaleY,
+        (characterHeight * characterScale + (Number(source.lineHeight) || 0)) * scaleY
       );
       const fontSize = Math.max(1, cellHeight * 0.78);
       const font = `${entry.fontStyle || "normal"} ${entry.fontWeight || "400"} ${fontSize}px ${entry.fontFace || "sans-serif"}`;
       const textHeight = Math.max(0, Number(source.textHeight) || 0);
-      const verticalOffset =
-        (Number(source.valign) || 0) *
-          Math.max(0, sourceHeight - textHeight) *
-          scaleY +
-        (Number(source.lineHeight) || 0) * scaleY;
+      const verticalOffset = (Number(source.valign) || 0) * Math.max(0, sourceHeight - textHeight) * scaleY + (Number(source.lineHeight) || 0) * scaleY;
       const horizontalAlignment = Number(source.halign) || 0;
       const context = overlayState.measureContext;
       if (context) context.font = font;
-      for (
-        let index = 0;
-        index < entry.constructLineElements.length;
-        index += 1
-      ) {
+      for (let index = 0; index < entry.constructLineElements.length; index += 1) {
         const element = entry.constructLineElements[index];
         const line = lines[index];
         const targetWidth = Math.max(1, line.width * scaleX);
-        const left =
-          horizontalAlignment * Math.max(0, sourceWidth - line.width) * scaleX;
+        const left = horizontalAlignment * Math.max(0, sourceWidth - line.width) * scaleX;
         const top = verticalOffset + index * lineStep;
         setStyleIfChanged(element, "left", `${roundCssPixel(left)}px`);
         setStyleIfChanged(element, "top", `${roundCssPixel(top)}px`);
         setStyleIfChanged(element, "width", `${roundCssPixel(targetWidth)}px`);
         setStyleIfChanged(element, "height", `${roundCssPixel(cellHeight)}px`);
         setStyleIfChanged(element, "font", font);
-        setStyleIfChanged(
-          element,
-          "lineHeight",
-          `${roundCssPixel(cellHeight)}px`,
-        );
+        setStyleIfChanged(element, "lineHeight", `${roundCssPixel(cellHeight)}px`);
         setStyleIfChanged(element, "transform", "");
         let characterX = 0;
         const characterElements = [...element.children];
         const characters = construct2TextSegments2(line.text);
-        for (
-          let characterIndex = 0;
-          characterIndex < characters.length;
-          characterIndex += 1
-        ) {
+        for (let characterIndex = 0; characterIndex < characters.length; characterIndex += 1) {
           const character = characters[characterIndex];
           const characterElement = characterElements[characterIndex];
           if (!characterElement) continue;
           let renderedCharacterWidth = 0;
-          for (
-            let unitIndex = 0;
-            unitIndex < character.length;
-            unitIndex += 1
-          ) {
+          for (let unitIndex = 0; unitIndex < character.length; unitIndex += 1) {
             let advanceWidth = characterWidth;
             try {
               advanceWidth = Math.max(
                 0,
-                Number(
-                  source.getCharacterWidth?.(character.charAt(unitIndex)),
-                ) || characterWidth,
+                Number(source.getCharacterWidth?.(character.charAt(unitIndex))) || characterWidth
               );
             } catch {
               advanceWidth = characterWidth;
             }
             renderedCharacterWidth += advanceWidth * characterScale;
-            if (unitIndex + 1 < character.length)
-              renderedCharacterWidth += characterSpacing;
+            if (unitIndex + 1 < character.length) renderedCharacterWidth += characterSpacing;
           }
           const measuredCharacterWidth = Math.max(
             1,
-            context?.measureText(character).width || renderedCharacterWidth,
+            context?.measureText(character).width || renderedCharacterWidth
           );
-          setStyleIfChanged(
-            characterElement,
-            "left",
-            `${roundCssPixel(characterX * scaleX)}px`,
-          );
+          setStyleIfChanged(characterElement, "left", `${roundCssPixel(characterX * scaleX)}px`);
           setStyleIfChanged(
             characterElement,
             "transform",
-            `scaleX(${(renderedCharacterWidth * scaleX) / measuredCharacterWidth})`,
+            `scaleX(${renderedCharacterWidth * scaleX / measuredCharacterWidth})`
           );
           characterX += renderedCharacterWidth + characterSpacing;
         }
@@ -3242,7 +2529,7 @@
         entry.fontStretch || "normal",
         entry.fontVariantCaps || "normal",
         entry.letterSpacing || "0px",
-        sample,
+        sample
       ].join("|");
       const cached = overlayState.baselineProbeCache.get(key);
       if (Number.isFinite(cached)) return cached;
@@ -3277,8 +2564,7 @@
       marker.style.border = "0";
       probe.appendChild(marker);
       document.documentElement.appendChild(probe);
-      const value =
-        marker.getBoundingClientRect().top - probe.getBoundingClientRect().top;
+      const value = marker.getBoundingClientRect().top - probe.getBoundingClientRect().top;
       probe.remove();
       const result = Number.isFinite(value) ? value : size;
       overlayState.baselineProbeCache.set(key, result);
@@ -3286,43 +2572,24 @@
     }
     function entryIsVisible(entry) {
       if (entry.domSource) return domSourceIsVisible2(entry.domSource);
-      if (entry.constructSource)
-        return construct2SourceIsVisible2(entry.constructSource);
+      if (entry.constructSource) return construct2SourceIsVisible2(entry.constructSource);
       if (entry.cocosSource) return cocosSourceIsVisible2(entry.cocosSource);
       const owner = entry.owner;
       if (!owner || owner.destroyed || !owner.parent) return false;
       if (!ownerBelongsToActiveScene(owner)) return false;
-      const openingNameWindow =
-        /(?:namebox|namewindow)/iu.test(
-          String(owner.constructor?.name || ""),
-        ) &&
-        typeof owner.isOpening === "function" &&
-        owner.isOpening();
-      if (
-        typeof owner.isClosed === "function" &&
-        owner.isClosed() &&
-        !openingNameWindow
-      )
-        return false;
-      if (entry.choiceSprite && !displayObjectIsVisible(entry.choiceSprite))
-        return false;
+      const openingNameWindow = /(?:namebox|namewindow)/iu.test(String(owner.constructor?.name || "")) && typeof owner.isOpening === "function" && owner.isOpening();
+      if (typeof owner.isClosed === "function" && owner.isClosed() && !openingNameWindow) return false;
+      if (entry.choiceSprite && !displayObjectIsVisible(entry.choiceSprite)) return false;
       const bitmapSprite = findBitmapSprite(owner, entry.bitmap);
       if (bitmapSprite && !displayObjectIsVisible(bitmapSprite)) return false;
       return displayObjectIsVisible(owner);
     }
     function retainOpeningRpgMakerNameEntry(entry) {
-      if (entry.domSource || entry.constructSource || entry.cocosSource)
-        return false;
+      if (entry.domSource || entry.constructSource || entry.cocosSource) return false;
       const owner = entry.owner;
       if (!owner || owner.destroyed || !owner.parent) return false;
-      if (
-        !/(?:namebox|namewindow)/iu.test(String(owner.constructor?.name || ""))
-      )
-        return false;
-      return (
-        owner.active === true ||
-        (typeof owner.isOpening === "function" && owner.isOpening())
-      );
+      if (!/(?:namebox|namewindow)/iu.test(String(owner.constructor?.name || ""))) return false;
+      return owner.active === true || typeof owner.isOpening === "function" && owner.isOpening();
     }
     function ownerBelongsToActiveScene(owner) {
       const scene = currentScene();
@@ -3345,14 +2612,14 @@
       if (entry.constructSource) return entry.constructRect || null;
       if (entry.cocosSource) return entry.cocosRect || null;
       if (entry.domSource) {
-        const rect2 = entry.domSource.getBoundingClientRect();
+        const rect2 = entry.domRect || entry.domSource.getBoundingClientRect();
         if (rect2.width <= 0 || rect2.height <= 0) return null;
         return {
           left: roundCssPixel(rect2.left),
           top: roundCssPixel(rect2.top),
           width: roundCssPixel(rect2.width),
           height: roundCssPixel(rect2.height),
-          fontSize: entry.fontSize || 24,
+          fontSize: entry.fontSize || 24
         };
       }
       const graphics = window.Graphics;
@@ -3360,54 +2627,32 @@
       if (!canvas) return null;
       const rect = canvas.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return null;
-      const scaleX =
-        rect.width / (graphics.width || canvas.width || rect.width || 1);
-      const scaleY =
-        rect.height / (graphics.height || canvas.height || rect.height || 1);
+      const scaleX = rect.width / (graphics.width || canvas.width || rect.width || 1);
+      const scaleY = rect.height / (graphics.height || canvas.height || rect.height || 1);
       const content = contentGeometry(entry);
       const clipped = intersectRects(entry, {
         x: content.originX,
         y: content.originY,
         width: content.visibleWidth,
-        height: content.visibleHeight,
+        height: content.visibleHeight
       });
       if (!clipped || clipped.width <= 0 || clipped.height <= 0) return null;
-      const pageLeft =
-        rect.left + (content.x - content.originX + clipped.x) * scaleX;
-      const pageTop =
-        rect.top + (content.y - content.originY + clipped.y) * scaleY;
+      const pageLeft = rect.left + (content.x - content.originX + clipped.x) * scaleX;
+      const pageTop = rect.top + (content.y - content.originY + clipped.y) * scaleY;
       const pageWidth = clipped.width * scaleX;
       const pageHeight = clipped.height * scaleY;
-      if (
-        pageLeft >= rect.right ||
-        pageTop >= rect.bottom ||
-        pageLeft + pageWidth <= rect.left ||
-        pageTop + pageHeight <= rect.top
-      )
-        return null;
+      if (pageLeft >= rect.right || pageTop >= rect.bottom || pageLeft + pageWidth <= rect.left || pageTop + pageHeight <= rect.top) return null;
       const textRect = {
         left: roundCssPixel(pageLeft),
         top: roundCssPixel(pageTop),
         width: roundCssPixel(pageWidth),
         height: roundCssPixel(pageHeight),
-        fontSize: roundCssPixel(
-          (entry.fontSize || entry.height || 24) * scaleY,
-        ),
-        baselineOffset: Number.isFinite(entry.baseline)
-          ? roundCssPixel((entry.baseline - clipped.y) * scaleY)
-          : void 0,
+        fontSize: roundCssPixel((entry.fontSize || entry.height || 24) * scaleY),
+        baselineOffset: Number.isFinite(entry.baseline) ? roundCssPixel((entry.baseline - clipped.y) * scaleY) : void 0,
         sourceX: clipped.x,
-        sourceScaleX: scaleX,
+        sourceScaleX: scaleX
       };
-      const choiceRect = choicePageRect(
-        entry,
-        canvas,
-        rect,
-        graphics,
-        content,
-        scaleX,
-        scaleY,
-      );
+      const choiceRect = choicePageRect(entry, canvas, rect, graphics, content, scaleX, scaleY);
       if (!choiceRect) {
         return {
           ...textRect,
@@ -3418,8 +2663,8 @@
             height: textRect.height,
             baselineOffset: textRect.baselineOffset,
             sourceX: textRect.sourceX,
-            sourceScaleX: textRect.sourceScaleX,
-          },
+            sourceScaleX: textRect.sourceScaleX
+          }
         };
       }
       return {
@@ -3432,26 +2677,18 @@
           height: textRect.height,
           baselineOffset: textRect.baselineOffset,
           sourceX: textRect.sourceX,
-          sourceScaleX: textRect.sourceScaleX,
-        },
+          sourceScaleX: textRect.sourceScaleX
+        }
       };
     }
-    function choicePageRect(
-      entry,
-      canvas,
-      canvasRect,
-      graphics,
-      content,
-      scaleX,
-      scaleY,
-    ) {
+    function choicePageRect(entry, canvas, canvasRect, graphics, content, scaleX, scaleY) {
       if (!Number.isInteger(entry.choiceIndex)) return null;
       if (entry.choiceSprite) {
         return displayObjectPageBounds(
           entry.choiceSprite,
           canvasRect,
           graphics.width || canvas.width,
-          graphics.height || canvas.height,
+          graphics.height || canvas.height
         );
       }
       if (!entry.choiceLocalRect) return null;
@@ -3459,25 +2696,21 @@
         x: content.originX,
         y: content.originY,
         width: content.visibleWidth,
-        height: content.visibleHeight,
+        height: content.visibleHeight
       });
       if (!clipped) return null;
       return {
-        left: roundCssPixel(
-          canvasRect.left + (content.x - content.originX + clipped.x) * scaleX,
-        ),
-        top: roundCssPixel(
-          canvasRect.top + (content.y - content.originY + clipped.y) * scaleY,
-        ),
+        left: roundCssPixel(canvasRect.left + (content.x - content.originX + clipped.x) * scaleX),
+        top: roundCssPixel(canvasRect.top + (content.y - content.originY + clipped.y) * scaleY),
         width: roundCssPixel(clipped.width * scaleX),
-        height: roundCssPixel(clipped.height * scaleY),
+        height: roundCssPixel(clipped.height * scaleY)
       };
     }
     return {
       entryIsVisible,
       ownerBelongsToScene,
       refreshRpgMakerFontMetrics,
-      scheduleFlush,
+      scheduleFlush
     };
   }
 
@@ -3517,7 +2750,7 @@
       baselineProbeCache: /* @__PURE__ */ new Map(),
       measureContext: null,
       root: null,
-      style: null,
+      style: null
     };
   }
 
@@ -3620,16 +2853,6 @@
     contain: layout style;
   }
 
-  .mz-player-text-overlay-entry-rpg-segment {
-    position: absolute;
-    display: block;
-    top: 0;
-    white-space: pre;
-    font: inherit;
-    color: inherit;
-    text-shadow: inherit;
-  }
-
   #mz-player-text-overlay.mz-player-text-overlay-readable
     .mz-player-text-overlay-entry {
     color: rgba(255, 255, 255, 0.96);
@@ -3654,17 +2877,13 @@
       dictionaryGuardActive,
       focusGameTarget,
       installDictionaryGuardInputHooks,
-      installOverlayFocusReturn,
-    } = createOverlayInputController({
-      overlayState,
-      postParentMessage,
-      settings,
-    });
+      installOverlayFocusReturn
+    } = createOverlayInputController({ overlayState, postParentMessage, settings });
     const {
       entryIsVisible,
       ownerBelongsToScene,
       refreshRpgMakerFontMetrics,
-      scheduleFlush,
+      scheduleFlush
     } = createOverlayRenderer({
       cocosSourceIsVisible,
       construct2SourceIsVisible,
@@ -3674,7 +2893,7 @@
       overlayIsActive,
       overlayState,
       removeEntry,
-      scaledCssLength,
+      scaledCssLength
     });
     const { install: installRpgMakerOverlayHooks } = createRpgMakerOverlay({
       entryIsVisible,
@@ -3684,7 +2903,7 @@
       refreshRpgMakerFontMetrics,
       removeEntry,
       scheduleFlush,
-      upsertEntry,
+      upsertEntry
     });
     const { install: installCocosOverlayHooks } = createCocosOverlayAdapter({
       domSourceId,
@@ -3693,26 +2912,25 @@
       overlayState,
       removeEntry,
       scheduleFlush,
-      upsertEntry,
+      upsertEntry
     });
-    const { install: installConstruct2OverlayHooks } =
-      createConstruct2OverlayAdapter({
-        domSourceId,
-        overlayIsActive,
-        overlayState,
-        removeEntry,
-        upsertEntry,
-      });
+    const { install: installConstruct2OverlayHooks } = createConstruct2OverlayAdapter({
+      domSourceId,
+      overlayIsActive,
+      overlayState,
+      removeEntry,
+      upsertEntry
+    });
     const {
       install: installTyranoOverlayHooks,
-      scheduleScan: scheduleTyranoScan,
+      scheduleScan: scheduleTyranoScan
     } = createTyranoOverlayAdapter({
       domSourceId,
       overlayIsActive,
       overlayState,
       removeEntry,
       scheduleFlush,
-      upsertEntry,
+      upsertEntry
     });
     function ensureOverlayDom() {
       if (!overlayState.style) {
@@ -3730,18 +2948,9 @@
     function refreshOverlayClasses() {
       ensureOverlayDom();
       const active = overlayIsActive();
-      overlayState.root.classList.toggle(
-        "mz-player-text-overlay-active",
-        active,
-      );
-      overlayState.root.classList.toggle(
-        "mz-player-text-overlay-readable",
-        settings.readableOverlay,
-      );
-      overlayState.root.classList.toggle(
-        "mz-player-text-overlay-reader",
-        settings.readerMode,
-      );
+      overlayState.root.classList.toggle("mz-player-text-overlay-active", active);
+      overlayState.root.classList.toggle("mz-player-text-overlay-readable", settings.readableOverlay);
+      overlayState.root.classList.toggle("mz-player-text-overlay-reader", settings.readerMode);
       if (!active) {
         clearOverlayEntries();
         clearGuardState();
@@ -3750,11 +2959,7 @@
       scheduleFlush();
     }
     function overlayIsActive() {
-      return (
-        settings.overlayEnabled ||
-        settings.readableOverlay ||
-        settings.readerMode
-      );
+      return settings.overlayEnabled || settings.readableOverlay || settings.readerMode;
     }
     function domSourceId(source) {
       let id = overlayState.domSourceIds.get(source);
@@ -3778,8 +2983,7 @@
       if (overlayState.root) overlayState.root.replaceChildren();
       overlayState.entries.clear();
       overlayState.lineGroups.clear();
-      for (const timer of overlayState.textLogTimers.values())
-        window.clearTimeout(timer);
+      for (const timer of overlayState.textLogTimers.values()) window.clearTimeout(timer);
       overlayState.textLogTimers.clear();
       overlayState.textLogValues.clear();
       overlayState.raf = 0;
@@ -3787,26 +2991,23 @@
     function upsertEntry(key, next) {
       const current = overlayState.entries.get(key) || {};
       const textChanged = current.text !== next.text;
+      const logTextChanged = current.logText !== next.logText;
       Object.assign(current, next);
       overlayState.entries.set(key, current);
-      if (textChanged) scheduleTextLog(key, current);
+      if (textChanged || logTextChanged) scheduleTextLog(key, current);
       scheduleFlush();
     }
     function scheduleTextLog(key, entry) {
+      if (entry.skipTextLog) return;
       if (!entryIsLoggable(entry)) return;
-      const text = String(entry.text || "");
+      const text = String(entry.logText ?? entry.text ?? "");
       const dedupeKey = textLogDedupeKey(text);
       if (!dedupeKey) return;
       replaceTextLogTimer(key, () => {
         overlayState.textLogTimers.delete(key);
         if (overlayState.textLogValues.get(key) === dedupeKey) return;
         overlayState.textLogValues.set(key, dedupeKey);
-        postParentMessage({
-          type: "text-log",
-          gameId: config.gameId,
-          text,
-          at: Date.now(),
-        });
+        postParentMessage({ type: "text-log", gameId: config.gameId, text, at: Date.now() });
       });
     }
     function replaceTextLogTimer(key, callback) {
@@ -3816,12 +3017,9 @@
       overlayState.textLogTimers.set(key, timer);
     }
     function entryIsLoggable(entry) {
-      if (entry?.domSource || entry?.constructSource || entry?.cocosSource)
-        return true;
+      if (entry?.domSource || entry?.constructSource || entry?.cocosSource) return true;
       const name = entry?.owner?.constructor?.name || "";
-      return /^(Window_Message|Window_ChoiceList|Window_NameBox|Window_ScrollText)$/.test(
-        name,
-      );
+      return /^(Window_Message|Window_ChoiceList|Window_NameBox|Window_ScrollText)$/.test(name);
     }
     return {
       clearGuardState,
@@ -3834,7 +3032,7 @@
       installRpgMakerOverlayHooks,
       installTyranoOverlayHooks,
       refreshOverlayClasses,
-      scheduleFlush,
+      scheduleFlush
     };
   }
 
@@ -3843,7 +3041,8 @@
     try {
       const rect = window.frameElement?.getBoundingClientRect?.();
       if (rect && rect.width > 0 && rect.height > 0) return rect;
-    } catch {}
+    } catch {
+    }
     return null;
   }
 
@@ -3852,18 +3051,9 @@
     function size(width, height) {
       const normalizedWidth = positiveFiniteNumber(width);
       const normalizedHeight = positiveFiniteNumber(height);
-      return normalizedWidth && normalizedHeight
-        ? { width: normalizedWidth, height: normalizedHeight }
-        : null;
+      return normalizedWidth && normalizedHeight ? { width: normalizedWidth, height: normalizedHeight } : null;
     }
-    return (
-      size(
-        graphics?.width || graphics?._width || graphics?.boxWidth,
-        graphics?.height || graphics?._height || graphics?.boxHeight,
-      ) ||
-      size(tyranoConfig?.scWidth, tyranoConfig?.scHeight) ||
-      size(canvas?.width, canvas?.height)
-    );
+    return size(graphics?.width || graphics?._width || graphics?.boxWidth, graphics?.height || graphics?._height || graphics?.boxHeight) || size(tyranoConfig?.scWidth, tyranoConfig?.scHeight) || size(canvas?.width, canvas?.height);
   }
   function createViewportBridge({ postParentMessage, scheduleFlush }) {
     let latestPlayerViewport = null;
@@ -3873,7 +3063,7 @@
       return detectNativeGameSize({
         graphics: window.Graphics,
         tyranoConfig: window.TYRANO?.kag?.config || window.config,
-        canvas: document.querySelector("canvas"),
+        canvas: document.querySelector("canvas")
       });
     }
     function installViewportBridge() {
@@ -3901,16 +3091,8 @@
     function playerViewport() {
       const rect = frameElementRect();
       return {
-        width:
-          rect?.width ||
-          latestPlayerViewport?.width ||
-          window.innerWidth ||
-          document.documentElement.clientWidth,
-        height:
-          rect?.height ||
-          latestPlayerViewport?.height ||
-          window.innerHeight ||
-          document.documentElement.clientHeight,
+        width: rect?.width || latestPlayerViewport?.width || window.innerWidth || document.documentElement.clientWidth,
+        height: rect?.height || latestPlayerViewport?.height || window.innerHeight || document.documentElement.clientHeight
       };
     }
     function notifyRpgMakerViewport(width, height) {
@@ -3929,47 +3111,26 @@
         }
       } catch (error) {
         lastAppliedViewport = "";
-        console.warn(
-          "[Local Web Game Player viewport] Could not notify RPG Maker resize.",
-          error,
-        );
+        console.warn("[Local Web Game Player viewport] Could not notify RPG Maker resize.", error);
       }
     }
     function rpgMakerNativeSize() {
       const graphics = window.Graphics;
       if (!graphics || typeof graphics !== "object") return null;
-      const width = Number(
-        graphics.width || graphics._width || graphics.boxWidth || 0,
-      );
-      const height = Number(
-        graphics.height || graphics._height || graphics.boxHeight || 0,
-      );
-      if (
-        !Number.isFinite(width) ||
-        !Number.isFinite(height) ||
-        width <= 0 ||
-        height <= 0
-      )
-        return null;
+      const width = Number(graphics.width || graphics._width || graphics.boxWidth || 0);
+      const height = Number(graphics.height || graphics._height || graphics.boxHeight || 0);
+      if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
       return { width, height };
     }
-    function containedRect(
-      viewportWidth,
-      viewportHeight,
-      nativeWidth,
-      nativeHeight,
-    ) {
-      const scale = Math.min(
-        viewportWidth / nativeWidth,
-        viewportHeight / nativeHeight,
-      );
+    function containedRect(viewportWidth, viewportHeight, nativeWidth, nativeHeight) {
+      const scale = Math.min(viewportWidth / nativeWidth, viewportHeight / nativeHeight);
       const width = Math.max(1, Math.floor(nativeWidth * scale));
       const height = Math.max(1, Math.floor(nativeHeight * scale));
       return {
         left: Math.floor((viewportWidth - width) / 2),
         top: Math.floor((viewportHeight - height) / 2),
         width,
-        height,
+        height
       };
     }
     function applyDocumentViewport(width, height) {
@@ -3991,13 +3152,7 @@
     function layerNativeSize(layer) {
       const width = Number(layer.videoWidth || layer.width || 0);
       const height = Number(layer.videoHeight || layer.height || 0);
-      if (
-        !Number.isFinite(width) ||
-        !Number.isFinite(height) ||
-        width <= 0 ||
-        height <= 0
-      )
-        return null;
+      if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
       return { width, height };
     }
     function applyLayerRect(layer, rect) {
@@ -4018,15 +3173,7 @@
       for (const layer of playerLayers()) {
         const nativeSize = layerNativeSize(layer);
         if (!nativeSize) continue;
-        applyLayerRect(
-          layer,
-          containedRect(
-            viewportWidth,
-            viewportHeight,
-            nativeSize.width,
-            nativeSize.height,
-          ),
-        );
+        applyLayerRect(layer, containedRect(viewportWidth, viewportHeight, nativeSize.width, nativeSize.height));
       }
     }
     function applyRpgMakerFit(viewportWidth, viewportHeight) {
@@ -4036,12 +3183,7 @@
         applyGenericContainedFit(viewportWidth, viewportHeight);
         return;
       }
-      const rect = containedRect(
-        viewportWidth,
-        viewportHeight,
-        nativeSize.width,
-        nativeSize.height,
-      );
+      const rect = containedRect(viewportWidth, viewportHeight, nativeSize.width, nativeSize.height);
       for (const layer of playerLayers()) {
         applyLayerRect(layer, rect);
       }
@@ -4064,16 +3206,13 @@
         try {
           applyViewportFit();
         } catch (error) {
-          console.warn(
-            "[Local Web Game Player viewport] Could not fit player viewport.",
-            error,
-          );
+          console.warn("[Local Web Game Player viewport] Could not fit player viewport.", error);
         }
       });
     }
     return {
       installViewportBridge,
-      updatePlayerViewport,
+      updatePlayerViewport
     };
   }
 
@@ -4092,47 +3231,16 @@
   function imageMimeType(value) {
     if (!value) return void 0;
     const bytes = bytesFromBuffer(value);
-    if (
-      bytes.length >= 8 &&
-      bytes[0] === 137 &&
-      bytes[1] === 80 &&
-      bytes[2] === 78 &&
-      bytes[3] === 71 &&
-      bytes[4] === 13 &&
-      bytes[5] === 10 &&
-      bytes[6] === 26 &&
-      bytes[7] === 10
-    ) {
+    if (bytes.length >= 8 && bytes[0] === 137 && bytes[1] === 80 && bytes[2] === 78 && bytes[3] === 71 && bytes[4] === 13 && bytes[5] === 10 && bytes[6] === 26 && bytes[7] === 10) {
       return "image/png";
     }
-    if (
-      bytes.length >= 3 &&
-      bytes[0] === 255 &&
-      bytes[1] === 216 &&
-      bytes[2] === 255
-    ) {
+    if (bytes.length >= 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) {
       return "image/jpeg";
     }
-    if (
-      bytes.length >= 4 &&
-      bytes[0] === 71 &&
-      bytes[1] === 73 &&
-      bytes[2] === 70 &&
-      bytes[3] === 56
-    ) {
+    if (bytes.length >= 4 && bytes[0] === 71 && bytes[1] === 73 && bytes[2] === 70 && bytes[3] === 56) {
       return "image/gif";
     }
-    if (
-      bytes.length >= 12 &&
-      bytes[0] === 82 &&
-      bytes[1] === 73 &&
-      bytes[2] === 70 &&
-      bytes[3] === 70 &&
-      bytes[8] === 87 &&
-      bytes[9] === 69 &&
-      bytes[10] === 66 &&
-      bytes[11] === 80
-    ) {
+    if (bytes.length >= 12 && bytes[0] === 82 && bytes[1] === 73 && bytes[2] === 70 && bytes[3] === 70 && bytes[8] === 87 && bytes[9] === 69 && bytes[10] === 66 && bytes[11] === 80) {
       return "image/webp";
     }
     return void 0;
@@ -4140,12 +3248,7 @@
 
   // shared/blob.ts
   function createArrayBufferObjectUrl(arrayBuffer, mimeType, fallback) {
-    if (
-      mimeType &&
-      typeof Blob !== "undefined" &&
-      typeof URL !== "undefined" &&
-      typeof URL.createObjectURL === "function"
-    ) {
+    if (mimeType && typeof Blob !== "undefined" && typeof URL !== "undefined" && typeof URL.createObjectURL === "function") {
       return URL.createObjectURL(new Blob([arrayBuffer], { type: mimeType }));
     }
     return fallback();
@@ -4156,7 +3259,22 @@
   var ENCRYPTION_FALLBACK_INSTALL_INTERVAL_MS = 10;
   var MAX_ENCRYPTION_FALLBACK_INSTALL_ATTEMPTS = 500;
   var PNG_HEADER_BYTES = new Uint8Array([
-    137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82,
+    137,
+    80,
+    78,
+    71,
+    13,
+    10,
+    26,
+    10,
+    0,
+    0,
+    0,
+    13,
+    73,
+    72,
+    68,
+    82
   ]);
   var OGG_HEADER_BYTES = new Uint8Array([79, 103, 103, 83]);
   var RIFF_HEADER_BYTES = new Uint8Array([82, 73, 70, 70]);
@@ -4182,19 +3300,11 @@
     const bytes = new Uint8Array(arrayBuffer);
     if (startsWithBytes(bytes, OGG_HEADER_BYTES)) return true;
     if (startsWithBytes(bytes, ID3_HEADER_BYTES)) return true;
-    if (bytes.byteLength >= 2 && bytes[0] === 255 && (bytes[1] & 224) === 224)
-      return true;
-    if (
-      bytes.byteLength >= 12 &&
-      startsWithBytes(bytes, RIFF_HEADER_BYTES) &&
-      startsWithBytes(bytes.slice(8, 12), WAVE_HEADER_BYTES)
-    ) {
+    if (bytes.byteLength >= 2 && bytes[0] === 255 && (bytes[1] & 224) === 224) return true;
+    if (bytes.byteLength >= 12 && startsWithBytes(bytes, RIFF_HEADER_BYTES) && startsWithBytes(bytes.slice(8, 12), WAVE_HEADER_BYTES)) {
       return true;
     }
-    return (
-      bytes.byteLength >= 12 &&
-      startsWithBytes(bytes.slice(4, 8), MP4_FTYP_HEADER_BYTES)
-    );
+    return bytes.byteLength >= 12 && startsWithBytes(bytes.slice(4, 8), MP4_FTYP_HEADER_BYTES);
   }
   function isMediaArrayBuffer(arrayBuffer) {
     return isImageArrayBuffer(arrayBuffer) || isAudioArrayBuffer(arrayBuffer);
@@ -4213,8 +3323,10 @@
   }
   function createImageBlobUrl(arrayBuffer) {
     const mimeType = imageMimeType(arrayBuffer);
-    return createArrayBufferObjectUrl(arrayBuffer, mimeType, () =>
-      Decrypter.createBlobUrl(arrayBuffer),
+    return createArrayBufferObjectUrl(
+      arrayBuffer,
+      mimeType,
+      () => Decrypter.createBlobUrl(arrayBuffer)
     );
   }
   function decryptImageArrayBufferWithFallback(arrayBuffer, defaultDecrypt) {
@@ -4241,65 +3353,45 @@
   }
   function patchUtilsDecryptArrayBuffer() {
     const utils = window.Utils;
-    if (
-      !utils ||
-      typeof utils.decryptArrayBuffer !== "function" ||
-      utils.decryptArrayBuffer.__MzPlayerEncryptionFallback
-    ) {
+    if (!utils || typeof utils.decryptArrayBuffer !== "function" || utils.decryptArrayBuffer.__MzPlayerEncryptionFallback) {
       return false;
     }
     const decryptArrayBuffer = utils.decryptArrayBuffer;
-    utils.decryptArrayBuffer = function (arrayBuffer) {
+    utils.decryptArrayBuffer = function(arrayBuffer) {
       return decryptMediaArrayBufferWithFallback(arrayBuffer, (source) => {
         return decryptArrayBuffer.call(this, source);
       });
     };
-    Object.defineProperty(
-      utils.decryptArrayBuffer,
-      "__MzPlayerEncryptionFallback",
-      {
-        value: true,
-      },
-    );
+    Object.defineProperty(utils.decryptArrayBuffer, "__MzPlayerEncryptionFallback", {
+      value: true
+    });
     return true;
   }
   function patchDecrypterDecryptImg() {
     const decrypter = window.Decrypter;
-    if (
-      !decrypter ||
-      typeof decrypter.decryptImg !== "function" ||
-      typeof decrypter.decryptArrayBuffer !== "function" ||
-      decrypter.decryptImg.__MzPlayerEncryptionFallback
-    ) {
+    if (!decrypter || typeof decrypter.decryptImg !== "function" || typeof decrypter.decryptArrayBuffer !== "function" || decrypter.decryptImg.__MzPlayerEncryptionFallback) {
       return false;
     }
-    decrypter.decryptImg = function (url, bitmap) {
+    decrypter.decryptImg = function(url, bitmap) {
       url = this.extToEncryptExt(url);
       const requestFile = new XMLHttpRequest();
       requestFile.open("GET", url);
       requestFile.responseType = "arraybuffer";
       requestFile.send();
-      requestFile.onload = function () {
+      requestFile.onload = function() {
         if (this.status < Decrypter._xhrOk) {
-          const arrayBuffer = decryptImageArrayBufferWithFallback(
-            requestFile.response,
-            (source) => {
-              return Decrypter.decryptArrayBuffer(source);
-            },
-          );
-          bitmap._image.addEventListener(
-            "load",
-            (bitmap._loadListener = Bitmap.prototype._onLoad.bind(bitmap)),
-          );
+          const arrayBuffer = decryptImageArrayBufferWithFallback(requestFile.response, (source) => {
+            return Decrypter.decryptArrayBuffer(source);
+          });
+          bitmap._image.addEventListener("load", bitmap._loadListener = Bitmap.prototype._onLoad.bind(bitmap));
           bitmap._image.addEventListener(
             "error",
-            (bitmap._errorListener =
-              bitmap._loader || Bitmap.prototype._onError.bind(bitmap)),
+            bitmap._errorListener = bitmap._loader || Bitmap.prototype._onError.bind(bitmap)
           );
           bitmap._image.src = createImageBlobUrl(arrayBuffer);
         }
       };
-      requestFile.onerror = function () {
+      requestFile.onerror = function() {
         if (bitmap._loader) {
           bitmap._loader();
         } else {
@@ -4307,13 +3399,9 @@
         }
       };
     };
-    Object.defineProperty(
-      decrypter.decryptImg,
-      "__MzPlayerEncryptionFallback",
-      {
-        value: true,
-      },
-    );
+    Object.defineProperty(decrypter.decryptImg, "__MzPlayerEncryptionFallback", {
+      value: true
+    });
     return true;
   }
   function installRpgMakerEncryptionFallback() {
@@ -4321,14 +3409,13 @@
       attempts: 0,
       decrypter: false,
       timer: void 0,
-      utils: false,
+      utils: false
     };
     window.__mzPlayerEncryptionFallbackState = state;
     const install = () => {
       state.utils = patchUtilsDecryptArrayBuffer() || state.utils;
       state.decrypter = patchDecrypterDecryptImg() || state.decrypter;
-      window.__mzPlayerEncryptionFallbackInstalled =
-        state.utils || state.decrypter;
+      window.__mzPlayerEncryptionFallbackInstalled = state.utils || state.decrypter;
       return window.__mzPlayerEncryptionFallbackInstalled;
     };
     if (install() && state.utils && state.decrypter) return;
@@ -4336,10 +3423,7 @@
     state.timer = setInterval(() => {
       const done = install();
       state.attempts += 1;
-      if (
-        (done && state.utils && state.decrypter) ||
-        state.attempts >= MAX_ENCRYPTION_FALLBACK_INSTALL_ATTEMPTS
-      ) {
+      if (done && state.utils && state.decrypter || state.attempts >= MAX_ENCRYPTION_FALLBACK_INSTALL_ATTEMPTS) {
         clearInterval(state.timer);
         state.timer = void 0;
       }
@@ -4360,17 +3444,12 @@
     }
   }
   function isMetadataValue(value) {
-    return (
-      typeof value === "string" ||
-      typeof value === "number" ||
-      typeof value === "boolean"
-    );
+    return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
   }
   function metadataWritesForSlots(runtime, globals, slots) {
     const saveState = globals.cr?.system_object?.prototype?.acts?.SaveState;
     const setVariable = globals.cr?.system_object?.prototype?.acts?.SetVar;
-    const setItem =
-      globals.cr?.plugins_?.LocalStorage?.prototype?.acts?.SetItem;
+    const setItem = globals.cr?.plugins_?.LocalStorage?.prototype?.acts?.SetItem;
     if (!saveState || !setItem) return [];
     const writes = /* @__PURE__ */ new Map();
     for (const action of Object.values(runtime.actsBySid ?? {})) {
@@ -4383,22 +3462,17 @@
         if (setItemAction.func !== setItem) continue;
         const key = actionParameter(setItemAction, 0);
         const value = actionParameter(setItemAction, 1);
-        if (typeof key !== "string" || !key || !isMetadataValue(value))
-          continue;
-        const variables = siblings
-          .slice(saveIndex + 1, index)
-          .filter(
-            (candidate) =>
-              candidate.func === setVariable &&
-              actionParameter(candidate, 1) === value,
-          )
-          .map((candidate) => actionParameter(candidate, 0))
-          .filter((variable) => typeof variable?.setValue === "function");
+        if (typeof key !== "string" || !key || !isMetadataValue(value)) continue;
+        const variables = siblings.slice(saveIndex + 1, index).filter(
+          (candidate) => candidate.func === setVariable && actionParameter(candidate, 1) === value
+        ).map((candidate) => actionParameter(candidate, 0)).filter(
+          (variable) => typeof variable?.setValue === "function"
+        );
         const existing = writes.get(key);
         writes.set(key, {
           key,
           value,
-          variables: [...(existing?.variables ?? []), ...variables],
+          variables: [...existing?.variables ?? [], ...variables]
         });
       }
     }
@@ -4422,9 +3496,9 @@
         continue;
       }
       await Promise.all(
-        writes.map(({ key, value }) =>
-          Promise.resolve(globals.localforage?.setItem(key, value)),
-        ),
+        writes.map(
+          ({ key, value }) => Promise.resolve(globals.localforage?.setItem(key, value))
+        )
       );
       for (const { value, variables } of writes) {
         for (const variable of variables) variable.setValue(value);
@@ -4453,82 +3527,79 @@
         requestId,
         gameId,
         engine: adapter.engine,
-        message: errorMessage(cause),
+        message: errorMessage(cause)
       });
     };
-    window.addEventListener("message", (event) => {
-      const message = event.data;
-      if (
-        event.origin !== window.location.origin ||
-        event.source !== window.parent ||
-        !message ||
-        message.gameId !== gameId ||
-        message.engine !== adapter.engine
-      ) {
-        return;
-      }
-      if (message.type === "save-import-abort") {
-        activeRequests.delete(message.requestId);
-        readiness.delete(message.requestId);
-        prepared.delete(message.requestId);
-        return;
-      }
-      if (message.type === "save-import-probe") {
-        if (readiness.has(message.requestId)) return;
-        activeRequests.add(message.requestId);
-        const ready = adapter.ready?.() ?? Promise.resolve();
-        readiness.set(message.requestId, ready);
-        void ready.then(
-          () => {
-            if (readiness.get(message.requestId) !== ready) return;
-            postParent2({
-              type: "save-import-ready",
-              requestId: message.requestId,
-              gameId,
-              engine: adapter.engine,
-            });
-          },
-          (cause) => fail(message.requestId, cause),
-        );
-        return;
-      }
-      void (async () => {
-        try {
-          if (message.type === "save-import-prepare") {
-            const result = await adapter.prepare(message.entries);
-            if (!activeRequests.has(message.requestId)) return;
-            readiness.delete(message.requestId);
-            prepared.set(message.requestId, {
-              importedEntries: result.importedEntries,
-              value: result.value,
-            });
-            postParent2({
-              type: "save-import-prepared",
-              requestId: message.requestId,
-              gameId,
-              engine: adapter.engine,
-              collisionCount: result.collisionCount,
-              importedEntries: result.importedEntries,
-            });
-            return;
-          }
-          const session = prepared.get(message.requestId);
-          if (!session) throw new Error(adapter.expiredSessionMessage);
-          await adapter.commit(session.value);
-          if (!activeRequests.delete(message.requestId)) return;
-          prepared.delete(message.requestId);
-          postParent2({
-            type: "save-import-complete",
-            requestId: message.requestId,
-            gameId,
-            engine: adapter.engine,
-            importedEntries: session.importedEntries,
-          });
-        } catch (cause) {
-          fail(message.requestId, cause);
+    window.addEventListener(
+      "message",
+      (event) => {
+        const message = event.data;
+        if (event.origin !== window.location.origin || event.source !== window.parent || !message || message.gameId !== gameId || message.engine !== adapter.engine) {
+          return;
         }
-      })();
-    });
+        if (message.type === "save-import-abort") {
+          activeRequests.delete(message.requestId);
+          readiness.delete(message.requestId);
+          prepared.delete(message.requestId);
+          return;
+        }
+        if (message.type === "save-import-probe") {
+          if (readiness.has(message.requestId)) return;
+          activeRequests.add(message.requestId);
+          const ready = adapter.ready?.() ?? Promise.resolve();
+          readiness.set(message.requestId, ready);
+          void ready.then(
+            () => {
+              if (readiness.get(message.requestId) !== ready) return;
+              postParent2({
+                type: "save-import-ready",
+                requestId: message.requestId,
+                gameId,
+                engine: adapter.engine
+              });
+            },
+            (cause) => fail(message.requestId, cause)
+          );
+          return;
+        }
+        void (async () => {
+          try {
+            if (message.type === "save-import-prepare") {
+              const result = await adapter.prepare(message.entries);
+              if (!activeRequests.has(message.requestId)) return;
+              readiness.delete(message.requestId);
+              prepared.set(message.requestId, {
+                importedEntries: result.importedEntries,
+                value: result.value
+              });
+              postParent2({
+                type: "save-import-prepared",
+                requestId: message.requestId,
+                gameId,
+                engine: adapter.engine,
+                collisionCount: result.collisionCount,
+                importedEntries: result.importedEntries
+              });
+              return;
+            }
+            const session = prepared.get(message.requestId);
+            if (!session) throw new Error(adapter.expiredSessionMessage);
+            await adapter.commit(session.value);
+            if (!activeRequests.delete(message.requestId)) return;
+            prepared.delete(message.requestId);
+            postParent2({
+              type: "save-import-complete",
+              requestId: message.requestId,
+              gameId,
+              engine: adapter.engine,
+              importedEntries: session.importedEntries
+            });
+          } catch (cause) {
+            fail(message.requestId, cause);
+          }
+        })();
+      }
+    );
   }
 
   // player-runtime/engines/construct2/saveImport.ts
@@ -4578,17 +3649,15 @@
   function requestResult(request) {
     return new Promise((resolve, reject) => {
       request.onsuccess = () => resolve(request.result);
-      request.onerror = () =>
-        reject(request.error ?? new Error("Construct 2 save storage failed."));
+      request.onerror = () => reject(request.error ?? new Error("Construct 2 save storage failed."));
     });
   }
   function transactionDone(transaction) {
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => resolve();
-      transaction.onerror = () =>
-        reject(
-          transaction.error ?? new Error("Construct 2 save storage failed."),
-        );
+      transaction.onerror = () => reject(
+        transaction.error ?? new Error("Construct 2 save storage failed.")
+      );
       transaction.onabort = transaction.onerror;
     });
   }
@@ -4605,13 +3674,10 @@
         request.result.onversionchange = () => request.result.close();
         resolve(request.result);
       };
-      request.onerror = () =>
-        reject(
-          request.error ??
-            new Error("Could not open Construct 2 save storage."),
-        );
-      request.onblocked = () =>
-        reject(new Error("Close other player tabs before importing saves."));
+      request.onerror = () => reject(
+        request.error ?? new Error("Could not open Construct 2 save storage.")
+      );
+      request.onblocked = () => reject(new Error("Close other player tabs before importing saves."));
     });
   }
   async function existingSaveCount(saves) {
@@ -4623,11 +3689,8 @@
       const existing = await Promise.all(
         saves.map(async ({ slot }) => {
           const indexedDbKey = await requestResult(store.getKey(slot));
-          return (
-            indexedDbKey !== void 0 ||
-            window.localStorage.getItem(`__c2save_${slot}`) !== null
-          );
-        }),
+          return indexedDbKey !== void 0 || window.localStorage.getItem(`__c2save_${slot}`) !== null;
+        })
       );
       await done;
       return existing.filter(Boolean).length;
@@ -4641,12 +3704,10 @@
       const transaction = database.transaction(STORE_NAME, "readonly");
       const done = transactionDone(transaction);
       const records = await requestResult(
-        transaction.objectStore(STORE_NAME).getAll(),
+        transaction.objectStore(STORE_NAME).getAll()
       );
       await done;
-      return records
-        .map((record) => record?.slot)
-        .filter((slot) => typeof slot === "string");
+      return records.map((record) => record?.slot).filter((slot) => typeof slot === "string");
     } finally {
       database.close();
     }
@@ -4675,14 +3736,13 @@
         return {
           collisionCount: await existingSaveCount(saves),
           importedEntries: saves.length,
-          value: saves,
+          value: saves
         };
       },
-      commit: commitSaves,
+      commit: commitSaves
     });
-    void storedSaveSlots()
-      .then(restoreConstruct2SaveMetadata)
-      .catch(() => {});
+    void storedSaveSlots().then(restoreConstruct2SaveMetadata).catch(() => {
+    });
   }
 
   // shared/indexedDbSaveTracking.ts
@@ -4701,8 +3761,7 @@
     const factory = window.indexedDB;
     if (!factory) return;
     const trackedFactory = factory;
-    if (trackedFactory.__mzPlayerDatabaseTrackingNamespace === namespace)
-      return;
+    if (trackedFactory.__mzPlayerDatabaseTrackingNamespace === namespace) return;
     const rawGetItem = Storage.prototype.getItem;
     const rawSetItem = Storage.prototype.setItem;
     const rawRemoveItem = Storage.prototype.removeItem;
@@ -4721,18 +3780,20 @@
     const markDatabase = (name, physical) => {
       try {
         rawSetItem.call(window.localStorage, markerKey(name), physical);
-      } catch {}
+      } catch {
+      }
     };
     const unmarkDatabase = (name) => {
       try {
         rawRemoveItem.call(window.localStorage, markerKey(name));
-      } catch {}
+      } catch {
+      }
     };
     try {
       Object.defineProperties(factory, {
         __mzPlayerDatabaseTrackingNamespace: {
           configurable: true,
-          value: namespace,
+          value: namespace
         },
         open: {
           configurable: true,
@@ -4740,10 +3801,8 @@
             const databaseName = String(name);
             const physicalDatabaseName = physicalName(databaseName);
             markDatabase(databaseName, physicalDatabaseName);
-            return version === void 0
-              ? originalOpen(physicalDatabaseName)
-              : originalOpen(physicalDatabaseName, version);
-          },
+            return version === void 0 ? originalOpen(physicalDatabaseName) : originalOpen(physicalDatabaseName, version);
+          }
         },
         deleteDatabase: {
           configurable: true,
@@ -4754,10 +3813,11 @@
               unmarkDatabase(databaseName);
             });
             return request;
-          },
-        },
+          }
+        }
       });
-    } catch {}
+    } catch {
+    }
   }
 
   // player-runtime/bridge/index.ts
@@ -4776,18 +3836,18 @@
     const overlay = createTextOverlayBridge({
       config,
       postParentMessage,
-      settings,
+      settings
     });
     const viewport = createViewportBridge({
       postParentMessage,
-      scheduleFlush: overlay.scheduleFlush,
+      scheduleFlush: overlay.scheduleFlush
     });
     const parent = createParentBridge({
       gameId: config.gameId,
       overlay,
       postParentMessage,
       settings,
-      viewport,
+      viewport
     });
     parent.installReservedKeys();
     parent.installMessageBridge();

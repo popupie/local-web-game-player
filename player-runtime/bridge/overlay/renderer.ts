@@ -68,10 +68,7 @@ export function createOverlayRenderer({
       } else {
         const displayText = entry.cocosSource ? entry.displayText || entry.text : entry.text;
         const textElement = entry.textElement || entry.element;
-        if (!usesExactRpgMakerCharacterPositions(entry)) {
-          entry.characterSegmentSignature = "";
-          if (textElement.textContent !== displayText) textElement.textContent = displayText;
-        }
+        if (textElement.textContent !== displayText) textElement.textContent = displayText;
       }
       entry.element.setAttribute("aria-label", entry.text);
       entry.element.dataset.rpgText = entry.text;
@@ -180,7 +177,6 @@ export function createOverlayRenderer({
         setStyleIfChanged(textElement, "direction", entry.direction === "rtl" ? "rtl" : "ltr");
         setStyleIfChanged(textElement, "textAlign", entry.textAlign || "left");
         setStyleIfChanged(textElement, "textRendering", "auto");
-        layoutRpgMakerCharacterSegments(entry, textElement, textRect);
         if (Number.isFinite(textRect.baselineOffset)) {
           const domBaseline = domTextBaselineOffset(entry, rect.fontSize);
           const baselineShift = textRect.baselineOffset - domBaseline;
@@ -194,56 +190,6 @@ export function createOverlayRenderer({
         }
       }
     }
-  }
-
-  function usesExactRpgMakerCharacterPositions(entry) {
-    if (!Array.isArray(entry.characterSegments) || entry.characterSegments.length < 2) return false;
-    const MessageWindow = window.Window_Message;
-    if (typeof MessageWindow === "function") {
-      try {
-        if (entry.owner instanceof MessageWindow) return true;
-      } catch {
-        // Fall through to the constructor-name check used by older MV builds.
-      }
-    }
-    return entry.owner?.constructor?.name === "Window_Message";
-  }
-
-  function layoutRpgMakerCharacterSegments(entry, textElement, textRect) {
-    if (!usesExactRpgMakerCharacterPositions(entry)) return;
-
-    const segments = entry.characterSegments;
-    const signature = segments
-      .map((segment) => `${segment.text}:${segment.x}:${segment.width}`)
-      .join("|");
-    if (entry.characterSegmentSignature !== signature) {
-      const fragment = document.createDocumentFragment();
-      for (const segment of segments) {
-        const element = document.createElement("span");
-        element.className = "mz-player-text-overlay-entry-rpg-segment";
-        element.textContent = segment.text;
-        fragment.appendChild(element);
-      }
-      textElement.replaceChildren(fragment);
-      entry.characterSegmentElements = [...textElement.children];
-      entry.characterSegmentSignature = signature;
-    }
-
-    const sourceX = Number.isFinite(textRect.sourceX) ? textRect.sourceX : entry.x;
-    const sourceScaleX = Number.isFinite(textRect.sourceScaleX)
-      ? textRect.sourceScaleX
-      : textRect.width / Math.max(1, entry.width);
-    for (let index = 0; index < segments.length; index += 1) {
-      const segment = segments[index];
-      const element = entry.characterSegmentElements?.[index];
-      if (!element) continue;
-      setStyleIfChanged(element, "left", `${roundCssPixel((segment.x - sourceX) * sourceScaleX)}px`);
-    }
-
-    // RPG Maker's drawTextEx paints these glyphs in separate Canvas calls, so
-    // cross-character kerning and ligatures must not be reintroduced by CSS.
-    setStyleIfChanged(textElement, "fontKerning", "none");
-    setStyleIfChanged(textElement, "fontVariantLigatures", "none");
   }
 
   function layoutConstruct2Entry(entry, rect) {
@@ -494,7 +440,7 @@ export function createOverlayRenderer({
     if (entry.constructSource) return entry.constructRect || null;
     if (entry.cocosSource) return entry.cocosRect || null;
     if (entry.domSource) {
-      const rect = entry.domSource.getBoundingClientRect();
+      const rect = entry.domRect || entry.domSource.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return null;
       return {
         left: roundCssPixel(rect.left),
