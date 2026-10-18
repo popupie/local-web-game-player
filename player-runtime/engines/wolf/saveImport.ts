@@ -1,8 +1,5 @@
-import type {
-  RuntimeSaveImportEntry,
-  RuntimeSaveImportRequest,
-  RuntimeSaveImportResponse,
-} from "@/shared/saveImportRuntime";
+import { installRuntimeSaveImportBridge } from "@/player-runtime/saveImportBridge";
+import type { RuntimeSaveImportEntry } from "@/shared/saveImportRuntime";
 
 export interface WolfRuntimeModule {
   preRun: Array<(runtimeModule?: WolfRuntimeModule) => void>;
@@ -29,10 +26,6 @@ type InitializeGameWindow = typeof window & {
   initializeGame?: () => void;
 };
 
-function postParent(message: RuntimeSaveImportResponse): void {
-  window.parent.postMessage(message, window.location.origin);
-}
-
 function normalizeSavePath(path: string): string {
   let normalized = path.replaceAll("\\", "/");
   const saveRoot = normalized.toLowerCase().indexOf("-save/");
@@ -43,9 +36,7 @@ function normalizeSavePath(path: string): string {
   const parts: string[] = [];
   for (const part of normalized.split("/")) {
     if (!part || part === ".") continue;
-    if (part === "..") {
-      throw new Error(`Invalid WOLF save path: ${path}`);
-    }
+    if (part === "..") throw new Error(`Invalid WOLF save path: ${path}`);
     parts.push(part);
   }
   if (parts.length === 0) throw new Error(`Invalid WOLF save path: ${path}`);
@@ -55,7 +46,9 @@ function normalizeSavePath(path: string): string {
   return parts.join("/");
 }
 
-function savesFromEntries(entries: RuntimeSaveImportEntry[]): PreparedWolfSave[] {
+function savesFromEntries(
+  entries: RuntimeSaveImportEntry[],
+): PreparedWolfSave[] {
   const saves = new Map<string, PreparedWolfSave>();
   for (const entry of entries) {
     const path = normalizeSavePath(entry.path);
@@ -108,79 +101,77 @@ function syncFileSystem(
   });
 }
 
-export function installWolfSaveImportBridge(
-  gameId: string,
+function createSaveStorage(
   runtimeModule: WolfRuntimeModule,
   getFileSystem: () => WolfFileSystem,
-): void {
-  const prepared = new Map<string, PreparedWolfSave[]>();
-  const waitingProbes = new Set<string>();
+): {
+  fileSystem: () => WolfFileSystem;
+  root: () => string;
+  ready: () => Promise<void>;
+} {
   let fileSystem: WolfFileSystem | undefined;
   let hydrated = false;
+  let settled = false;
   let fallbackHydrationStarted = false;
   let runtimeStartedAt = 0;
+  let readinessInterval: number | undefined;
+  let resolveHydration!: () => void;
+  let rejectHydration!: (cause: unknown) => void;
 
-  const saveRoot = (): string => {
+  const hydration = new Promise<void>((resolve, reject) => {
+    resolveHydration = resolve;
+    rejectHydration = reject;
+  });
+  void hydration.catch(() => undefined);
+
+  const clearReadinessInterval = (): void => {
+    if (readinessInterval === undefined) return;
+    window.clearInterval(readinessInterval);
+    readinessInterval = undefined;
+  };
+
+  const finishHydration = (error?: unknown): void => {
+    if (settled) return;
+    settled = true;
+    clearReadinessInterval();
+    if (error) {
+      rejectHydration(
+        error instanceof Error
+          ? error
+          : new Error("WOLF save storage could not be loaded."),
+      );
+      return;
+    }
+    hydrated = true;
+    resolveHydration();
+  };
+
+  const root = (): string => {
     if (!runtimeModule.projectId) {
       throw new Error("The WOLF save storage path is unavailable.");
     }
     return `/data0/${runtimeModule.projectId}-Save`;
   };
 
-  const respondReady = (): void => {
-    if (!hydrated) return;
-    for (const requestId of waitingProbes) {
-      postParent({
-        type: "save-import-ready",
-        requestId,
-        gameId,
-        engine: "wolf",
-      });
-    }
-    waitingProbes.clear();
-  };
-
-  const respondHydrationError = (cause: unknown): void => {
-    const message =
-      cause instanceof Error
-        ? cause.message
-        : "WOLF save storage could not be loaded.";
-    for (const requestId of waitingProbes) {
-      postParent({
-        type: "save-import-error",
-        requestId,
-        gameId,
-        engine: "wolf",
-        message,
-      });
-    }
-    waitingProbes.clear();
-  };
-
   runtimeModule.preRun.push(() => {
-    fileSystem = getFileSystem();
-    const originalSync = fileSystem.syncfs;
-    fileSystem.syncfs = function(populate, callback) {
-      return originalSync.call(fileSystem, populate, (error?: unknown) => {
-        if (populate) {
-          if (error) respondHydrationError(error);
-          else {
-            hydrated = true;
-            respondReady();
-          }
-        }
-        callback?.(error);
-      });
+    const activeFileSystem = getFileSystem();
+    fileSystem = activeFileSystem;
+    const originalSync = activeFileSystem.syncfs;
+    activeFileSystem.syncfs = function (populate, callback) {
+      return originalSync.call(
+        activeFileSystem,
+        populate,
+        (error?: unknown) => {
+          if (populate) finishHydration(error);
+          callback?.(error);
+        },
+      );
     };
   });
 
   const prepareRuntime = (): void => {
-    if (waitingProbes.size === 0) return;
-    if (hydrated) {
-      respondReady();
-      return;
-    }
-    if (!runtimeModule.ready) return;
+    if (settled || !runtimeModule.ready) return;
+
     const wasInitialized = Boolean(runtimeModule.woditor?.initialized);
     (window as InitializeGameWindow).initializeGame?.();
     if (!wasInitialized && runtimeModule.woditor?.initialized) {
@@ -196,103 +187,78 @@ export function installWolfSaveImportBridge(
     ) {
       return;
     }
-    let rootExists = false;
+    let saveRoot: string;
     try {
-      rootExists = pathExists(fileSystem, saveRoot());
+      saveRoot = root();
     } catch {
       return;
     }
-    if (!rootExists) return;
+    if (!pathExists(fileSystem, saveRoot)) return;
 
     fallbackHydrationStarted = true;
-    void syncFileSystem(fileSystem, true).catch(respondHydrationError);
+    void syncFileSystem(fileSystem, true).then(
+      () => finishHydration(),
+      finishHydration,
+    );
   };
 
-  const readinessInterval = window.setInterval(prepareRuntime, 100);
-  window.addEventListener("pagehide", () => {
-    window.clearInterval(readinessInterval);
-  }, { once: true });
+  window.addEventListener("pagehide", () => clearReadinessInterval(), {
+    once: true,
+  });
 
-  window.addEventListener(
-    "message",
-    (event: MessageEvent<RuntimeSaveImportRequest>) => {
-      if (
-        event.origin !== window.location.origin ||
-        event.source !== window.parent ||
-        !event.data ||
-        event.data.gameId !== gameId ||
-        event.data.engine !== "wolf"
-      ) {
-        return;
+  return {
+    fileSystem() {
+      if (!hydrated || !fileSystem) {
+        throw new Error("WOLF save storage is not ready.");
       }
-
-      const message = event.data;
-      if (message.type === "save-import-probe") {
-        waitingProbes.add(message.requestId);
-        prepareRuntime();
-        return;
-      }
-      if (message.type === "save-import-abort") {
-        waitingProbes.delete(message.requestId);
-        prepared.delete(message.requestId);
-        return;
-      }
-
-      void (async () => {
-        try {
-          if (!hydrated || !fileSystem) {
-            throw new Error("WOLF save storage is not ready.");
-          }
-          const activeFileSystem = fileSystem;
-          const root = saveRoot();
-          if (message.type === "save-import-prepare") {
-            const saves = savesFromEntries(message.entries);
-            const collisionCount = saves.filter(
-              (save) =>
-                pathExists(activeFileSystem, `${root}/${save.path}`) ||
-                pathExists(activeFileSystem, save.path),
-            ).length;
-            prepared.set(message.requestId, saves);
-            postParent({
-              type: "save-import-prepared",
-              requestId: message.requestId,
-              gameId,
-              engine: "wolf",
-              collisionCount,
-              importedEntries: saves.length,
-            });
-            return;
-          }
-          if (message.type === "save-import-commit") {
-            const saves = prepared.get(message.requestId);
-            if (!saves) throw new Error("The WOLF import session expired.");
-            for (const save of saves) {
-              ensureParentDirectories(activeFileSystem, root, save.path);
-              ensureParentDirectories(activeFileSystem, "", save.path);
-              activeFileSystem.writeFile(`${root}/${save.path}`, save.data);
-              activeFileSystem.writeFile(save.path, save.data);
-            }
-            await syncFileSystem(activeFileSystem, false);
-            prepared.delete(message.requestId);
-            postParent({
-              type: "save-import-complete",
-              requestId: message.requestId,
-              gameId,
-              engine: "wolf",
-              importedEntries: saves.length,
-            });
-          }
-        } catch (cause) {
-          prepared.delete(message.requestId);
-          postParent({
-            type: "save-import-error",
-            requestId: message.requestId,
-            gameId,
-            engine: "wolf",
-            message: cause instanceof Error ? cause.message : String(cause),
-          });
-        }
-      })();
+      return fileSystem;
     },
-  );
+    root,
+    async ready() {
+      if (!settled && readinessInterval === undefined) {
+        readinessInterval = window.setInterval(prepareRuntime, 100);
+        prepareRuntime();
+      }
+      await hydration;
+    },
+  };
+}
+
+export function installWolfSaveImportBridge(
+  gameId: string,
+  runtimeModule: WolfRuntimeModule,
+  getFileSystem: () => WolfFileSystem,
+): void {
+  const storage = createSaveStorage(runtimeModule, getFileSystem);
+
+  installRuntimeSaveImportBridge<PreparedWolfSave[]>(gameId, {
+    engine: "wolf",
+    expiredSessionMessage: "The WOLF import session expired.",
+    ready: storage.ready,
+    async prepare(entries) {
+      const saves = savesFromEntries(entries);
+      const fileSystem = storage.fileSystem();
+      const root = storage.root();
+      return {
+        collisionCount: saves.filter(
+          ({ path }) =>
+            pathExists(fileSystem, `${root}/${path}`) ||
+            pathExists(fileSystem, path),
+        ).length,
+        importedEntries: saves.length,
+        value: saves,
+      };
+    },
+    async commit(saves) {
+      const fileSystem = storage.fileSystem();
+      const root = storage.root();
+      for (const save of saves) {
+        ensureParentDirectories(fileSystem, root, save.path);
+        ensureParentDirectories(fileSystem, "", save.path);
+        fileSystem.writeFile(`${root}/${save.path}`, save.data);
+        fileSystem.writeFile(save.path, save.data);
+      }
+      await syncFileSystem(fileSystem, false);
+    },
+  });
 }

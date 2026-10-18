@@ -8,6 +8,7 @@ import {
 import type { GameRecord } from "@/src/lib/types";
 
 export const CONSTRUCT2_SAVE_DATABASE = "_C2SaveStates";
+export const CONSTRUCT2_METADATA_DATABASE = "localforage";
 
 export function constructExportPathForStorageKey(
   key: string,

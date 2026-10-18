@@ -223,9 +223,7 @@ export async function indexedDbNamesForGame(
         names.add(name);
       }
     }
-    return Array.from(names)
-      .filter(isWolfSaveDatabase)
-      .sort();
+    return Array.from(names).filter(isWolfSaveDatabase).sort();
   }
 
   if (engine === "construct-2") {
@@ -233,21 +231,12 @@ export async function indexedDbNamesForGame(
       available.size === 0 ||
       available.has(CONSTRUCT2_SAVE_DATABASE) ||
       available.has(
-        scopedIndexedDbName(
-          storageNamespace(gameId),
-          CONSTRUCT2_SAVE_DATABASE,
-        ),
+        scopedIndexedDbName(storageNamespace(gameId), CONSTRUCT2_SAVE_DATABASE),
       )
     ) {
       names.add(CONSTRUCT2_SAVE_DATABASE);
     }
-    return Array.from(names)
-      .filter(
-        (name) =>
-          isConstructSaveDatabase(name) ||
-          name === RPG_MAKER_SAVE_DATABASE,
-      )
-      .sort();
+    return Array.from(names).filter(isConstructSaveDatabase).sort();
   }
 
   if (engine === "rpg-maker") {
@@ -255,10 +244,7 @@ export async function indexedDbNamesForGame(
       available.size === 0 ||
       available.has(RPG_MAKER_SAVE_DATABASE) ||
       available.has(
-        scopedIndexedDbName(
-          storageNamespace(gameId),
-          RPG_MAKER_SAVE_DATABASE,
-        ),
+        scopedIndexedDbName(storageNamespace(gameId), RPG_MAKER_SAVE_DATABASE),
       )
     ) {
       names.add(RPG_MAKER_SAVE_DATABASE);
@@ -333,7 +319,9 @@ function readObjectStore(
       cursor.continue();
     };
     request.onerror = () =>
-      reject(request.error ?? new Error(`Could not read ${database}/${store}.`));
+      reject(
+        request.error ?? new Error(`Could not read ${database}/${store}.`),
+      );
     transaction.oncomplete = () => resolve(records);
     transaction.onerror = () =>
       reject(
@@ -414,7 +402,7 @@ function structuredJson(value: unknown): string {
           type:
             nested instanceof ArrayBuffer
               ? "ArrayBuffer"
-              : nested?.constructor?.name ?? "TypedArray",
+              : (nested?.constructor?.name ?? "TypedArray"),
           base64: bytesToBase64(bytes),
         };
       }
@@ -484,7 +472,7 @@ export async function exportIndexedDbRecord(
         : record.value instanceof ArrayBuffer
           ? "ArrayBuffer"
           : bytes
-            ? record.value?.constructor?.name ?? "Uint8Array"
+            ? (record.value?.constructor?.name ?? "Uint8Array")
             : typeof record.value === "string"
               ? "String"
               : "Json",
@@ -603,8 +591,7 @@ export async function downloadSaveZip(game: GameRecord): Promise<void> {
   }
   const metadataEntries = Array.from(entries.values()).filter(
     (entry) =>
-      entry.path.startsWith("indexedDB/") &&
-      entry.target?.kind === "indexeddb",
+      entry.path.startsWith("indexedDB/") && entry.target?.kind === "indexeddb",
   );
   if (metadataEntries.length > 0) {
     const manifest: SaveArchiveManifest = {

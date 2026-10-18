@@ -22,7 +22,7 @@ export function wolfSaveRelativePath(path: string): string | undefined {
 
 export function isWolfIndexedDbSaveRecord(record: IndexedDbRecord): boolean {
   return (
-    isWolfIndexedDbRecord(record) &&
+    isWolfSaveDatabase(record.database) &&
     record.store === "FILE_DATA" &&
     typeof record.key === "string" &&
     Boolean(wolfSaveRelativePath(record.key))

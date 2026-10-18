@@ -1,6 +1,9 @@
 // @ts-nocheck
 
-import { createParentBridge, postParent } from "@/player-runtime/bridge/parentBridge";
+import {
+  createParentBridge,
+  postParent,
+} from "@/player-runtime/bridge/parentBridge";
 import { createSettingsStore } from "@/player-runtime/bridge/settings";
 import { patchLocalStorage } from "@/player-runtime/bridge/storageNamespace";
 import { createTextOverlayBridge } from "@/player-runtime/bridge/overlay";
@@ -20,7 +23,9 @@ import { trackIndexedDbDatabases } from "@/shared/indexedDbSaveTracking";
 
   trackIndexedDbDatabases(prefix);
   patchLocalStorage(prefix);
-  installConstruct2SaveImportBridge(config.gameId);
+  if (config.engine === "construct-2") {
+    installConstruct2SaveImportBridge(config.gameId);
+  }
 
   const overlay = createTextOverlayBridge({
     config,

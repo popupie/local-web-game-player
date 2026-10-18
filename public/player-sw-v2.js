@@ -1,1 +1,1 @@
-importScripts("/player-sw.js?v=wolf-compat-13");
+importScripts("/player-sw.js?v=player-sw-15");

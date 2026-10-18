@@ -4,11 +4,10 @@ import {
   trackedIndexedDbPhysicalName,
   trackedIndexedDbMarkerPrefix,
 } from "@/shared/indexedDbSaveTracking";
-import {
-  indexedDbNamesForGame,
-} from "@/src/lib/saveExport";
+import { indexedDbNamesForGame } from "@/src/lib/saveExport";
 import { detectGameEngine } from "@/src/engines/detect";
 import {
+  CONSTRUCT2_METADATA_DATABASE,
   CONSTRUCT2_SAVE_DATABASE,
   isConstructSaveDatabase,
 } from "@/src/engines/construct2/save";
@@ -51,7 +50,10 @@ function openExistingDatabase(
   });
 }
 
-async function deleteDatabase(factory: IDBFactory, name: string): Promise<void> {
+async function deleteDatabase(
+  factory: IDBFactory,
+  name: string,
+): Promise<void> {
   if (!name || name === PLAYER_DATABASE_NAME) return;
   await new Promise<void>((resolve, reject) => {
     const request = factory.deleteDatabase(name);
@@ -86,7 +88,9 @@ async function deleteStoreRecords(
         reject(request.error ?? new Error("Could not scan save records."));
       transaction.oncomplete = () => resolve();
       transaction.onerror = () =>
-        reject(transaction.error ?? new Error("Could not remove save records."));
+        reject(
+          transaction.error ?? new Error("Could not remove save records."),
+        );
       transaction.onabort = transaction.onerror;
     });
   } finally {
@@ -188,15 +192,9 @@ export async function clearGameIndexedDbSaves(
   let engine: GameEngine = "unknown";
   try {
     engine = await detectGameEngine(game.id);
-  } catch {
-    // Tracked database markers still allow safe cleanup.
-  }
-  const names = await indexedDbNamesForGame(
-    game.id,
-    engine,
-    storage,
-    factory,
-  );
+  } catch {}
+  const names = await indexedDbNamesForGame(game.id, engine, storage, factory);
+  if (engine === "construct-2") names.push(CONSTRUCT2_METADATA_DATABASE);
   for (const name of names) {
     await clearKnownEngineDatabase(game.id, engine, name, storage, factory);
   }
