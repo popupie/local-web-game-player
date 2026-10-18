@@ -5,6 +5,7 @@ import type {
   DictionaryDismissGuard,
   GameRecord,
   ImportProgress,
+  KeyChord,
 } from "@/src/lib/types";
 import { DictionaryGuardPanel } from "@/src/components/DictionaryGuardPanel";
 import { GameCard } from "@/src/components/GameCard";
@@ -14,6 +15,7 @@ import { ImportProgressCard } from "@/src/components/ImportProgressCard";
 interface LibraryPanelProps {
   activeGame?: GameRecord;
   activeGuard: DictionaryDismissGuard;
+  defaultGuardTriggers: KeyChord[];
   boundSessionGameIds: Set<string>;
   directoryInputRef: RefObject<HTMLInputElement | null>;
   error: string | null;
@@ -32,8 +34,10 @@ interface LibraryPanelProps {
   recordingGuardTrigger: boolean;
   removeGame: (game: GameRecord) => void;
   bindSessionFolder: (game: GameRecord) => void;
-  removeGuardTrigger: (game: GameRecord, index: number) => void;
-  recordGuardTrigger: (game: GameRecord, event: KeyboardEvent) => void;
+  removeDefaultGuardTrigger: (index: number) => void;
+  removeGameGuardTrigger: (game: GameRecord, index: number) => void;
+  recordGuardTrigger: (event: KeyboardEvent) => void;
+  restoreDefaultGuardTrigger: (index: number) => void;
   resetError: () => void;
   resetNotice: () => void;
   setActiveGameId: (gameId: string) => void;
@@ -47,6 +51,7 @@ interface LibraryPanelProps {
 export function LibraryPanel({
   activeGame,
   activeGuard,
+  defaultGuardTriggers,
   boundSessionGameIds,
   directoryInputRef,
   error,
@@ -65,8 +70,10 @@ export function LibraryPanel({
   recordingGuardTrigger,
   removeGame,
   bindSessionFolder,
-  removeGuardTrigger,
+  removeDefaultGuardTrigger,
+  removeGameGuardTrigger,
   recordGuardTrigger,
+  restoreDefaultGuardTrigger,
   resetError,
   resetNotice,
   setActiveGameId,
@@ -188,10 +195,14 @@ export function LibraryPanel({
 
       <div className="sidebar-bottom">
         <DictionaryGuardPanel
-          activeGame={guardAvailable ? activeGame : undefined}
+          activeGame={activeGame}
+          canEditGame={guardAvailable}
+          defaultTriggers={defaultGuardTriggers}
           guard={activeGuard}
           onRecordTrigger={recordGuardTrigger}
-          onRemoveTrigger={removeGuardTrigger}
+          onRemoveDefaultTrigger={removeDefaultGuardTrigger}
+          onRemoveGameTrigger={removeGameGuardTrigger}
+          onRestoreDefaultTrigger={restoreDefaultGuardTrigger}
           onToggle={setDictionaryGuard}
           recording={recordingGuardTrigger}
           setRecording={setRecordingGuardTrigger}

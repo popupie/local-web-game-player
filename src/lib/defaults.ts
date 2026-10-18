@@ -8,6 +8,10 @@ export const defaultPlayerSettings = (): PlayerSettings => ({
   dictionaryDismissGuard: {
     ...defaultDictionaryDismissGuard,
     triggers: defaultDictionaryDismissGuard.triggers.map((trigger) => ({ ...trigger })),
+    excludedDefaultTriggers:
+      defaultDictionaryDismissGuard.excludedDefaultTriggers.map((trigger) => ({
+        ...trigger,
+      })),
   },
   reservedKeys: defaultReservedKeys.map((key) => ({ ...key })),
 });

@@ -842,6 +842,17 @@ progress::-moz-progress-bar {
   font-size: 12px;
 }
 
+.guard-status-default {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 6px;
+  color: #cbd5e1;
+  font-size: 12px;
+}
+
 .guard-row button.recording {
   border-color: var(--color-accent);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.14);
@@ -872,6 +883,19 @@ progress::-moz-progress-bar {
 .guard-chip.removable:focus-visible {
   border-color: rgba(248, 250, 252, 0.32);
   background: rgba(248, 250, 252, 0.08);
+}
+
+.guard-chip.default-key {
+  border-width: 2px;
+}
+
+.guard-chip.game-key {
+  border-width: 1px;
+}
+
+.guard-chip.excluded span {
+  opacity: 0.58;
+  text-decoration: line-through;
 }
 
 .guard-chip.removable .icon {

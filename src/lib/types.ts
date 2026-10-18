@@ -26,7 +26,10 @@ export interface KeyChord {
 
 export interface DictionaryDismissGuard {
   enabled: boolean;
+  /** Keys configured specifically for this game. */
   triggers: KeyChord[];
+  /** Global default keys that this game should not inherit. */
+  excludedDefaultTriggers: KeyChord[];
 }
 
 export interface PlayerSettings {

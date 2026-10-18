@@ -15,6 +15,7 @@ export default function App() {
       <LibraryPanel
         activeGame={library.activeGame}
         activeGuard={controller.activeDictionaryGuard}
+        defaultGuardTriggers={controller.defaultGuardTriggers}
         boundSessionGameIds={library.boundSessionGameIds}
         directoryInputRef={directoryInputRef}
         error={library.error}
@@ -47,11 +48,17 @@ export default function App() {
         recordingGuardTrigger={controller.recordingGuardTrigger}
         removeGame={(game) => void library.removeGame(game)}
         bindSessionFolder={(game) => void library.bindSessionFolder(game)}
-        removeGuardTrigger={(game, index) =>
-          void controller.removeGuardTrigger(game, index)
+        removeDefaultGuardTrigger={(index) =>
+          void controller.removeDefaultGuardTrigger(index)
         }
-        recordGuardTrigger={(game, event) =>
-          void controller.recordGuardTrigger(game, event)
+        removeGameGuardTrigger={(game, index) =>
+          void controller.removeGameGuardTrigger(game, index)
+        }
+        recordGuardTrigger={(event) =>
+          void controller.recordGuardTrigger(event)
+        }
+        restoreDefaultGuardTrigger={(index) =>
+          void controller.restoreDefaultGuardTrigger(index)
         }
         resetError={() => library.setError(null)}
         resetNotice={() => library.setNotice(null)}

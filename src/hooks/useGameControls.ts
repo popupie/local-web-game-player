@@ -3,17 +3,26 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { chordFromEvent, sameChord } from "@/src/lib/keyChords";
+import {
+  loadDefaultGuardKeys,
+  saveDefaultGuardKeys,
+} from "@/src/lib/defaultGuardKeys";
+import {
+  chordFromEvent,
+  sameChord,
+} from "@/src/lib/keyChords";
 import { reservedKeyForEvent } from "@/src/lib/keys";
 import {
   defaultDictionaryDismissGuard,
   dictionaryGuardFor,
   overlayTogglePatch,
+  playerSettingsForRuntime,
   showTogglePatch,
 } from "@/src/lib/playerSettings";
 import type {
   DictionaryDismissGuard,
   GameRecord,
+  KeyChord,
   ReservedKeyAction,
 } from "@/src/lib/types";
 import type { useGameLibrary } from "@/src/hooks/useGameLibrary";
@@ -34,6 +43,9 @@ export function useGameControls({
   player,
 }: GameControlsOptions) {
   const [recordingGuardTrigger, setRecordingGuardTrigger] = useState(false);
+  const [defaultGuardTriggers, setDefaultGuardTriggers] = useState(() =>
+    loadDefaultGuardKeys(),
+  );
   const activeDictionaryGuard = library.activeGame
     ? dictionaryGuardFor(library.activeGame)
     : defaultDictionaryDismissGuard;
@@ -66,7 +78,10 @@ export function useGameControls({
     const updated = await library.saveGameSettings(game, patch);
     player.postPlayerMessage({
       type: "player-settings",
-      settings: updated.settings,
+      settings: playerSettingsForRuntime(
+        updated.settings,
+        defaultGuardTriggers,
+      ),
     });
   }
 
@@ -101,7 +116,7 @@ export function useGameControls({
     if (action === "fullscreen") await player.requestFullscreen();
   }
 
-  function onAppKeyDown(event: ReactKeyboardEvent) {
+  function onAppKeyDown(event: React.KeyboardEvent) {
     const game = library.activeGame;
     if (!game) return;
 
@@ -118,10 +133,48 @@ export function useGameControls({
     await setGameSettings(game, { dictionaryDismissGuard: guard });
   }
 
-  async function recordGuardTrigger(
-    game: GameRecord,
-    event: ReactKeyboardEvent,
-  ) {
+  function saveDefaultTriggers(triggers: KeyChord[]) {
+    setDefaultGuardTriggers(triggers);
+    try {
+      saveDefaultGuardKeys(triggers);
+    } catch {
+      library.setError("Could not save the default guard keys.");
+    }
+  }
+
+  async function saveRecordedGuardTrigger(chord: KeyChord) {
+    const game = library.activeGame;
+    if (!game) {
+      const triggers = defaultGuardTriggers.some((item) =>
+        sameChord(item, chord),
+      )
+        ? defaultGuardTriggers
+        : [...defaultGuardTriggers, chord];
+      saveDefaultTriggers(triggers);
+      return;
+    }
+
+    const guard = dictionaryGuardFor(game);
+    const matchingDefault = defaultGuardTriggers.find((trigger) =>
+      sameChord(trigger, chord),
+    );
+    if (matchingDefault) {
+      await setDictionaryGuard(game, {
+        ...guard,
+        excludedDefaultTriggers: guard.excludedDefaultTriggers.filter(
+          (trigger) => !sameChord(trigger, matchingDefault),
+        ),
+      });
+      return;
+    }
+
+    const triggers = guard.triggers.some((item) => sameChord(item, chord))
+      ? guard.triggers
+      : [...guard.triggers, chord];
+    await setDictionaryGuard(game, { ...guard, triggers });
+  }
+
+  async function recordGuardTrigger(event: ReactKeyboardEvent) {
     if (!recordingGuardTrigger) return;
     event.preventDefault();
     event.stopPropagation();
@@ -132,20 +185,57 @@ export function useGameControls({
 
     const chord = chordFromEvent(event.nativeEvent);
     if (!chord) return;
-    const guard = dictionaryGuardFor(game);
-    const triggers = guard.triggers.some((item) => sameChord(item, chord))
-      ? guard.triggers
-      : [...guard.triggers, chord];
+
     setRecordingGuardTrigger(false);
-    await setDictionaryGuard(game, { ...guard, triggers });
+    await saveRecordedGuardTrigger(chord);
   }
 
-  async function removeGuardTrigger(game: GameRecord, index: number) {
+  async function removeGameGuardTrigger(game: GameRecord, index: number) {
     const guard = dictionaryGuardFor(game);
     await setDictionaryGuard(game, {
       ...guard,
       triggers: guard.triggers.filter(
         (_, itemIndex) => itemIndex !== index,
+      ),
+    });
+  }
+
+  async function removeDefaultGuardTrigger(index: number) {
+    const trigger = defaultGuardTriggers[index];
+    if (!trigger) return;
+
+    const game = library.activeGame;
+    if (!game) {
+      saveDefaultTriggers(
+        defaultGuardTriggers.filter((_, itemIndex) => itemIndex !== index),
+      );
+      return;
+    }
+
+    const guard = dictionaryGuardFor(game);
+    if (
+      guard.excludedDefaultTriggers.some((excluded) =>
+        sameChord(excluded, trigger),
+      )
+    ) {
+      return;
+    }
+    await setDictionaryGuard(game, {
+      ...guard,
+      excludedDefaultTriggers: [...guard.excludedDefaultTriggers, trigger],
+    });
+  }
+
+  async function restoreDefaultGuardTrigger(index: number) {
+    const trigger = defaultGuardTriggers[index];
+    const game = library.activeGame;
+    if (!game || !trigger) return;
+
+    const guard = dictionaryGuardFor(game);
+    await setDictionaryGuard(game, {
+      ...guard,
+      excludedDefaultTriggers: guard.excludedDefaultTriggers.filter(
+        (excluded) => !sameChord(excluded, trigger),
       ),
     });
   }
@@ -156,7 +246,10 @@ export function useGameControls({
 
     player.postPlayerMessage({
       type: "player-settings",
-      settings: game.settings,
+      settings: playerSettingsForRuntime(
+        game.settings,
+        defaultGuardTriggers,
+      ),
     });
     player.resetViewportCache();
     player.schedulePlayerViewportNotify();
@@ -166,12 +259,15 @@ export function useGameControls({
 
   return {
     activeDictionaryGuard,
+    defaultGuardTriggers,
     handleIframeLoad,
     handleReservedAction,
     onAppKeyDown,
     recordingGuardTrigger,
     recordGuardTrigger,
-    removeGuardTrigger,
+    removeDefaultGuardTrigger,
+    removeGameGuardTrigger,
+    restoreDefaultGuardTrigger,
     returnHome,
     selectGame,
     setDictionaryGuard,
