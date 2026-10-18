@@ -5,7 +5,7 @@ const FILE_STORE = "files";
 const BLOB_STORE = "blobs";
 const HANDLE_STORE = "handles";
 
-const PLAYER_DESKTOP_RUNTIME_VERSION = "desktop-api-10";
+const PLAYER_DESKTOP_RUNTIME_VERSION = "desktop-api-13";
 const PLAYER_BRIDGE_RUNTIME_VERSION = "bridge-api-19";
 const PLAYER_WOLF_RUNTIME_VERSION = "wolf-compat-14";
 const SESSION_FILE_TIMEOUT_MS = 10000;
@@ -907,6 +907,16 @@ function isConstruct2Game(files) {
   });
 }
 
+function hasNodeNlpPackage(files) {
+  return files.some((file) => {
+    const path = normalizePath(file.path).toLowerCase();
+    return (
+      path === "node_modules/node-nlp/package.json" ||
+      path.endsWith("/node_modules/node-nlp/package.json")
+    );
+  });
+}
+
 function isLooseWolfRpgGame(files) {
   if (!isWolfRpgGame(files)) return false;
   let hasManifest = false;
@@ -1181,6 +1191,9 @@ function injectBridge(html, game, files) {
             desktopRuntimeConfig(game, files),
           )};</script>`,
           `<script src="/mz-player-runtime/buffer.js?v=${PLAYER_DESKTOP_RUNTIME_VERSION}"></script>`,
+          ...(hasNodeNlpPackage(files)
+            ? [`<script src="/mz-player-runtime/node-nlp.js?v=${PLAYER_DESKTOP_RUNTIME_VERSION}"></script>`]
+            : []),
           `<script src="/mz-player-runtime/desktop.js?v=${PLAYER_DESKTOP_RUNTIME_VERSION}"></script>`,
         ].join("");
   const runtimeScripts = [

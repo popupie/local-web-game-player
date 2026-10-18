@@ -1,7 +1,16 @@
 // @ts-nocheck
 
 import { EventEmitter } from "events";
+import * as tweenModule from "@tweenjs/tween.js";
+import lodashModule from "lodash";
+import * as rxjsModule from "rxjs";
+import * as rxjsAjaxModule from "rxjs/ajax";
+import * as rxjsFetchModule from "rxjs/fetch";
+import * as rxjsOperatorsModule from "rxjs/operators";
+import * as rxjsTestingModule from "rxjs/testing";
+import * as rxjsWebSocketModule from "rxjs/webSocket";
 import * as streamModule from "stream";
+import * as xlsxModule from "xlsx";
 import { scheduleMicrotask } from "@/shared/browser";
 
 export function createNodeBuiltins({
@@ -409,7 +418,19 @@ export function createNodeBuiltins({
     "node:url": urlModule,
     util: utilModule,
     "node:util": utilModule,
+    "@tweenjs/tween.js": tweenModule,
+    lodash: lodashModule,
+    rxjs: rxjsModule,
+    "rxjs/ajax": rxjsAjaxModule,
+    "rxjs/fetch": rxjsFetchModule,
+    "rxjs/operators": rxjsOperatorsModule,
+    "rxjs/testing": rxjsTestingModule,
+    "rxjs/webSocket": rxjsWebSocketModule,
+    xlsx: xlsxModule,
   };
+  if (window.__MzPlayerNodeNlpModule) {
+    modules["node-nlp"] = window.__MzPlayerNodeNlpModule;
+  }
 
   class StringDecoderShim {
     constructor(encoding = "utf8") {

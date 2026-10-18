@@ -9,8 +9,17 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const outdir = resolve(root, "public/mz-player-runtime");
 const require = createRequire(import.meta.url);
 const browserNodeAliases = {
+  assert: resolve(root, "player-runtime/desktop/buildAliases/assert.ts"),
   events: require.resolve("events/"),
+  fs: resolve(root, "player-runtime/desktop/buildAliases/fs.ts"),
+  http: resolve(root, "player-runtime/desktop/buildAliases/network.ts"),
+  https: resolve(root, "player-runtime/desktop/buildAliases/network.ts"),
+  net: resolve(root, "player-runtime/desktop/buildAliases/network.ts"),
+  path: resolve(root, "player-runtime/desktop/buildAliases/path.ts"),
+  querystring: resolve(root, "player-runtime/desktop/buildAliases/querystring.ts"),
   stream: require.resolve("stream-browserify"),
+  tls: resolve(root, "player-runtime/desktop/buildAliases/network.ts"),
+  url: resolve(root, "player-runtime/desktop/buildAliases/url.ts"),
 };
 
 const nodeBrowserAliasPlugin = {
@@ -29,8 +38,13 @@ async function buildRuntime(entryName, entryPath = entryName) {
     banner: {
       js: [
         "var process = globalThis.process || (globalThis.process = {",
+        "  argv: ['/Game.exe'],",
         "  browser: true,",
+        "  cwd: function() { return '/www'; },",
         "  env: {},",
+        "  platform: 'browser',",
+        "  version: 'v16.20.2',",
+        "  versions: { node: '16.20.2', nw: '0.72.0' },",
         "  nextTick: function(callback) {",
         "    var args = Array.prototype.slice.call(arguments, 1);",
         "    Promise.resolve().then(function() { callback.apply(null, args); });",
@@ -78,6 +92,7 @@ async function buildRuntimeBridge() {
 
 await mkdir(outdir, { recursive: true });
 await buildRuntime("buffer");
+await buildRuntime("node-nlp");
 await buildRuntime("desktop");
 await buildRuntime("wolf", "engines/wolf/index");
 await buildRuntimeBridge();

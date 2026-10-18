@@ -196,8 +196,9 @@ subdirectories; open the folder that directly contains `index.html`.
 For extracted RPG Maker and NW.js games, the player provides
 compatibility layers for common `path`, `fs`, `process`, `os`, `Buffer`,
 `events`, `stream`, `util`, `url`, `querystring`, `assert`, `timers`,
-`child_process`, NW.js, and Electron calls. CommonJS modules can be loaded from
-the game folder or `node_modules`, including packages that use a
+`child_process`, RxJS, Lodash, Tween.js, SheetJS (`xlsx`), NW.js, and Electron
+calls. CommonJS modules can also be loaded from the game folder or
+`node_modules`, including packages that use a
 `package.json` `main` or string `browser` entry.
 
 ## Local Setup

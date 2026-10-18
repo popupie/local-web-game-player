@@ -423,6 +423,11 @@ import {
   installGlobalValue("global", window);
   installGlobalValue("__filename", mainModule.filename);
   installGlobalValue("__dirname", dirname(mainModule.filename));
+  installGlobalValue("module", { exports: {} });
+  installGlobalValue("_", modules.lodash);
+  installGlobalValue("TWEEN", modules["@tweenjs/tween.js"]);
+  installGlobalValue("rxjs", modules.rxjs);
+  installGlobalValue("XLSX", modules.xlsx);
   installGlobalValue("setImmediate", timersModule.setImmediate);
   installGlobalValue("clearImmediate", timersModule.clearImmediate);
 
@@ -450,6 +455,13 @@ import {
       "buffer.commonJS",
       "buffer.global",
       "events.commonJS",
+      "lodash.commonJS",
+      "lodash.global",
+      ...(modules["node-nlp"] ? ["nodeNlp.commonJS"] : []),
+      "rxjs.commonJS",
+      "rxjs.global",
+      "tween.commonJS",
+      "tween.global",
       "os.commonJS",
       "childProcess.noop",
       "native.steamFallback",

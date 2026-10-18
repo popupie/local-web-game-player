@@ -1,4 +1,4 @@
-const PLAYER_SERVICE_WORKER_VERSION = "player-sw-15";
+const PLAYER_SERVICE_WORKER_VERSION = "player-sw-18";
 
 export async function registerPlayerServiceWorker(): Promise<
   ServiceWorkerRegistration | undefined

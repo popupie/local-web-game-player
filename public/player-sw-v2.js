@@ -1,1 +1,1 @@
-importScripts("/player-sw.js?v=player-sw-15");
+importScripts("/player-sw.js?v=player-sw-18");
