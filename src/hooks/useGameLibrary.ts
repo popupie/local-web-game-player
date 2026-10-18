@@ -87,9 +87,9 @@ function waitForNextPaint(): Promise<void> {
 
 export function useGameLibrary(onImportStart?: () => void) {
   const [games, setGames] = useState<GameRecord[]>([]);
-  const [gameEngines, setGameEngines] = useState<
-    Record<string, GameEngine>
-  >({});
+  const [gameEngines, setGameEngines] = useState<Record<string, GameEngine>>(
+    {},
+  );
   const [activeGameId, setActiveGameId] = useState<string | null>(null);
   const [progress, setProgress] = useState<ImportProgress>(idleProgress);
   const [error, setError] = useState<string | null>(null);
@@ -330,6 +330,11 @@ export function useGameLibrary(onImportStart?: () => void) {
   async function removeGame(game: GameRecord) {
     setError(null);
     setNotice(null);
+    if (game.favorite) {
+      setNotice("Remove this game from favorites before deleting it.");
+      return;
+    }
+
     try {
       if (activeGameId === game.id) {
         setActiveGameId(null);
@@ -350,15 +355,25 @@ export function useGameLibrary(onImportStart?: () => void) {
       setActiveGameId(remaining[0]?.id ?? null);
       setStorage(await estimateStorage());
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Game removal failed.",
-      );
+      setError(cause instanceof Error ? cause.message : "Game removal failed.");
     }
   }
 
   async function clearStorage() {
+    const gamesToRemove = games.filter((game) => !game.favorite);
+    const favoriteGames = games.filter((game) => game.favorite);
+    if (gamesToRemove.length === 0) {
+      setError(null);
+      setNotice(null);
+      return;
+    }
+
     const confirmed = window.confirm(
-      "Clear all imported games, saves, and folder bindings stored by this player in this browser?",
+      favoriteGames.length > 0
+        ? `Clear ${gamesToRemove.length} non-favorite ${
+            gamesToRemove.length === 1 ? "game" : "games"
+          }?`
+        : "Clear all imported games, saves, and folder bindings stored by this player in this browser?",
     );
     if (!confirmed) return;
 
@@ -366,17 +381,49 @@ export function useGameLibrary(onImportStart?: () => void) {
     setError(null);
     setNotice(null);
     try {
-      setActiveGameId(null);
-      await waitForNextPaint();
-      await clearServiceWorkerPlayerCache();
-      await clearAllGameIndexedDbSaves();
-      await clearPlayerStorage();
-      clearAllGameStorageNamespaces();
-      clearAllSessionFolders();
-      setGames([]);
-      setGameEngines({});
+      const activeGameWillBeRemoved = gamesToRemove.some(
+        (game) => game.id === activeGameId,
+      );
+      if (activeGameWillBeRemoved) {
+        setActiveGameId(null);
+        await waitForNextPaint();
+      }
+
+      if (favoriteGames.length === 0) {
+        await clearServiceWorkerPlayerCache();
+        await clearAllGameIndexedDbSaves();
+        await clearPlayerStorage();
+        clearAllGameStorageNamespaces();
+        clearAllSessionFolders();
+      } else {
+        for (const game of gamesToRemove) {
+          await clearGameIndexedDbSaves(game);
+          await deleteGame(game.id);
+          clearGameStorageNamespace(game.id);
+          clearSessionFolder(game.id);
+          clearServiceWorkerGameCache(game.id);
+        }
+      }
+
+      setGames(favoriteGames);
+      setGameEngines((engines) =>
+        Object.fromEntries(
+          favoriteGames.flatMap((game) =>
+            engines[game.id] ? [[game.id, engines[game.id]]] : [],
+          ),
+        ),
+      );
+      if (activeGameWillBeRemoved) {
+        setActiveGameId(favoriteGames[0]?.id ?? null);
+      }
       setStorage(await estimateStorageAfterMutation(previousStorage));
-      setNotice("Storage cleared.");
+      setNotice(
+        favoriteGames.length > 0
+          ? `Cleared ${gamesToRemove.length} ${
+              gamesToRemove.length === 1 ? "game" : "games"
+            }.`
+          : "Storage cleared.",
+      );
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Storage clear failed.",
@@ -448,8 +495,7 @@ export function useGameLibrary(onImportStart?: () => void) {
     setError(null);
     setNotice(null);
     try {
-      const engine =
-        gameEngines[game.id] ?? (await detectGameEngine(game.id));
+      const engine = gameEngines[game.id] ?? (await detectGameEngine(game.id));
       if (!supportsSaveImport(engine)) {
         setError(saveImportUnavailableReason(engine));
         return;
@@ -511,6 +557,28 @@ export function useGameLibrary(onImportStart?: () => void) {
     return updated;
   }
 
+  async function toggleFavorite(game: GameRecord): Promise<void> {
+    setError(null);
+    setNotice(null);
+    const updated: GameRecord = {
+      ...game,
+      favorite: !game.favorite,
+    };
+
+    try {
+      await putGame(updated);
+      setGames((items) =>
+        items.map((item) => (item.id === updated.id ? updated : item)),
+      );
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not update favorite status.",
+      );
+    }
+  }
+
   async function updateGameTitle(gameId: string, title: string): Promise<void> {
     const normalizedTitle = title.replace(/\s+/gu, " ").trim();
     const game = games.find((item) => item.id === gameId);
@@ -553,6 +621,7 @@ export function useGameLibrary(onImportStart?: () => void) {
     clearStorage,
     bindSessionFolder,
     saveGameSettings,
+    toggleFavorite,
     updateGameTitle,
     setActiveGameId: selectGame,
     setError,

@@ -45,6 +45,7 @@ export type GameSourceKind = "stored" | "local-folder" | "session-folder";
 export interface GameRecord {
   id: string;
   title: string;
+  favorite: boolean;
   createdAt: string;
   updatedAt: string;
   entryPath: string;

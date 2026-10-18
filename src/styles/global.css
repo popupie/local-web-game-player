@@ -165,6 +165,13 @@ progress::-moz-progress-bar {
   border-top: 1px solid rgba(148, 163, 184, 0.24);
 }
 
+.sidebar-alerts {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 10px;
+  padding-bottom: 16px;
+}
+
 .brand-row,
 .player-toolbar,
 .storage-meter-header {
@@ -383,7 +390,7 @@ progress::-moz-progress-bar {
 
 .game-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 40px;
+  grid-template-columns: minmax(0, 1fr) 80px;
   min-height: 67.5px;
   gap: 8px;
   align-items: stretch;
@@ -452,8 +459,30 @@ progress::-moz-progress-bar {
   align-items: center;
 }
 
+.game-controls {
+  display: flex;
+  align-items: center;
+}
+
+.game-favorite-toggle,
 .game-actions-toggle {
   border-color: transparent;
+}
+
+.library-panel .game-favorite-toggle[aria-pressed="true"] {
+  border-color: transparent;
+  background: transparent;
+  color: #fbbf24;
+}
+
+.library-panel .game-favorite-toggle[aria-pressed="true"]:hover,
+.library-panel .game-favorite-toggle[aria-pressed="true"]:focus-visible {
+  border-color: rgba(251, 191, 36, 0.28);
+  background: rgba(251, 191, 36, 0.1);
+}
+
+.game-favorite-toggle[aria-pressed="true"] .icon {
+  fill: currentColor;
 }
 
 .game-actions-menu {

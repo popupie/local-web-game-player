@@ -476,6 +476,7 @@ export async function importCandidate(candidate: ImportCandidate, onProgress?: P
   const game: GameRecord = {
     id: gameId,
     title: candidate.title,
+    favorite: false,
     createdAt: now,
     updatedAt: now,
     entryPath: candidate.entryPath,
@@ -514,6 +515,7 @@ export async function importLocalFolderCandidate(
   const game: GameRecord = {
     id: gameId,
     title: candidate.title,
+    favorite: false,
     createdAt: now,
     updatedAt: now,
     entryPath: candidate.entryPath,
@@ -551,6 +553,7 @@ export async function importSessionFolderCandidate(
   const game: GameRecord = {
     id: gameId,
     title: candidate.title,
+    favorite: false,
     createdAt: now,
     updatedAt: now,
     entryPath: candidate.entryPath,

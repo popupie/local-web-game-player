@@ -44,6 +44,7 @@ interface LibraryPanelProps {
   setIdle: () => void;
   setDictionaryGuard: (game: GameRecord, guard: DictionaryDismissGuard) => void;
   setRecordingGuardTrigger: (recording: boolean) => void;
+  toggleFavorite: (game: GameRecord) => void;
   storage?: StorageEstimate;
   zipInputRef: RefObject<HTMLInputElement | null>;
 }
@@ -80,6 +81,7 @@ export function LibraryPanel({
   setIdle,
   setDictionaryGuard,
   setRecordingGuardTrigger,
+  toggleFavorite,
   storage,
   zipInputRef,
 }: LibraryPanelProps) {
@@ -149,34 +151,6 @@ export function LibraryPanel({
           <ImportProgressCard progress={progress} />
         )}
 
-        {error && (
-          <div className="alert dismissible-alert">
-            <span>{error}</span>
-            <button
-              type="button"
-              aria-label="Dismiss error"
-              title="Dismiss error"
-              onClick={resetError}
-            >
-              <Icon name="x" />
-            </button>
-          </div>
-        )}
-
-        {notice && (
-          <div className="notice dismissible-alert">
-            <span>{notice}</span>
-            <button
-              type="button"
-              aria-label="Dismiss notice"
-              title="Dismiss notice"
-              onClick={resetNotice}
-            >
-              <Icon name="x" />
-            </button>
-          </div>
-        )}
-
         {games.map((game) => (
           <GameCard
             key={game.id}
@@ -189,9 +163,42 @@ export function LibraryPanel({
             onImportSaves={importSaves}
             onBindSessionFolder={bindSessionFolder}
             onSelect={setActiveGameId}
+            onToggleFavorite={toggleFavorite}
           />
         ))}
       </div>
+
+      {(error || notice) && (
+        <div className="sidebar-alerts">
+          {error && (
+            <div className="alert dismissible-alert">
+              <span>{error}</span>
+              <button
+                type="button"
+                aria-label="Dismiss error"
+                title="Dismiss error"
+                onClick={resetError}
+              >
+                <Icon name="x" />
+              </button>
+            </div>
+          )}
+
+          {notice && (
+            <div className="notice dismissible-alert">
+              <span>{notice}</span>
+              <button
+                type="button"
+                aria-label="Dismiss notice"
+                title="Dismiss notice"
+                onClick={resetNotice}
+              >
+                <Icon name="x" />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="sidebar-bottom">
         <DictionaryGuardPanel

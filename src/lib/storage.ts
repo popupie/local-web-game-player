@@ -51,6 +51,7 @@ export function fileKey(gameId: string, path: string): string {
 function normalizeGameRecord(game: GameRecord): GameRecord {
   return {
     ...game,
+    favorite: game.favorite ?? false,
     sourceKind: game.sourceKind ?? "stored",
   };
 }

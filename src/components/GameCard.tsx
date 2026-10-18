@@ -26,6 +26,7 @@ interface GameCardProps {
   onImportSaves: (game: GameRecord, files: File[]) => void;
   onBindSessionFolder: (game: GameRecord) => void;
   onSelect: (gameId: string) => void;
+  onToggleFavorite: (game: GameRecord) => void;
 }
 
 function storageLabel(game: GameRecord, boundSession: boolean): string {
@@ -57,6 +58,7 @@ export function GameCard({
   onDownloadSaves,
   onImportSaves,
   onSelect,
+  onToggleFavorite,
 }: GameCardProps) {
   const actionMenuId = useId();
   const actionsRef = useRef<HTMLDivElement>(null);
@@ -180,117 +182,140 @@ export function GameCard({
         <span>{detailsLabel(game, boundSession)}</span>
       </button>
 
-      <div
-        ref={actionsRef}
-        className="game-actions"
-        onBlur={handleActionsBlur}
-        onMouseEnter={showActions}
-        onMouseLeave={scheduleHideActions}
-      >
+      <div className="game-controls">
         <button
-          ref={actionsToggleRef}
           type="button"
-          className="icon-button game-actions-toggle"
-          aria-label={`Options for ${game.title}`}
-          aria-controls={actionMenuId}
-          aria-expanded={actionsOpen}
-          title="Game options"
-          onClick={showActions}
-          onFocus={showActions}
+          className="icon-button game-favorite-toggle"
+          aria-label={`${game.favorite ? "Remove" : "Add"} ${game.title} ${
+            game.favorite ? "from" : "to"
+          } favorites`}
+          aria-pressed={game.favorite}
+          title={game.favorite ? "Remove from favorites" : "Add to favorites"}
+          onClick={() => onToggleFavorite(game)}
         >
-          <Icon name="moreVertical" />
+          <Icon name="star" />
         </button>
 
-        {actionsOpen &&
-          createPortal(
-            <div
-              ref={menuRef}
-              id={actionMenuId}
-              className="game-actions-menu"
-              aria-label={`Options for ${game.title}`}
-              style={menuPosition}
-              onBlur={handleActionsBlur}
-              onMouseEnter={showActions}
-              onMouseLeave={scheduleHideActions}
-            >
-              <button
-                type="button"
-                className="game-action-button"
-                onClick={() => {
-                  setActionsOpen(false);
-                  onDownloadSaves(game);
-                }}
-              >
-                <Icon name="download" />
-                <span>Download saves</span>
-              </button>
+        <div
+          ref={actionsRef}
+          className="game-actions"
+          onBlur={handleActionsBlur}
+          onMouseEnter={showActions}
+          onMouseLeave={scheduleHideActions}
+        >
+          <button
+            ref={actionsToggleRef}
+            type="button"
+            className="icon-button game-actions-toggle"
+            aria-label={`Options for ${game.title}`}
+            aria-controls={actionMenuId}
+            aria-expanded={actionsOpen}
+            title="Game options"
+            onClick={showActions}
+            onFocus={showActions}
+          >
+            <Icon name="moreVertical" />
+          </button>
 
+          {actionsOpen &&
+            createPortal(
               <div
-                className="game-import-action"
-                onMouseEnter={() => {
-                  if (canImportSaves) setImportChoicesVisible(true);
-                }}
-                onMouseLeave={() => setImportChoicesVisible(false)}
+                ref={menuRef}
+                id={actionMenuId}
+                className="game-actions-menu"
+                aria-label={`Options for ${game.title}`}
+                style={menuPosition}
+                onBlur={handleActionsBlur}
+                onMouseEnter={showActions}
+                onMouseLeave={scheduleHideActions}
               >
                 <button
                   type="button"
-                  className="game-action-button has-submenu"
-                  disabled={!canImportSaves}
-                  title={canImportSaves ? "Import save" : importUnavailableReason}
-                  aria-haspopup="menu"
-                  aria-expanded={canImportSaves && importChoicesVisible}
-                  onClick={() => setImportChoicesVisible(true)}
-                  onFocus={() => setImportChoicesVisible(true)}
+                  className="game-action-button"
+                  onClick={() => {
+                    setActionsOpen(false);
+                    onDownloadSaves(game);
+                  }}
                 >
-                  <Icon name="upload" />
-                  <span>Import save</span>
+                  <Icon name="download" />
+                  <span>Download saves</span>
                 </button>
-                {canImportSaves && importChoicesVisible && (
-                  <div
-                    className={`game-import-submenu${
-                      importSubmenuLeft ? " open-left" : ""
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      className="game-action-button"
-                      onClick={() => {
-                        setActionsOpen(false);
-                        saveFileInputRef.current?.click();
-                      }}
-                    >
-                      <Icon name="archive" />
-                      <span>File or ZIP</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="game-action-button"
-                      onClick={() => {
-                        setActionsOpen(false);
-                        saveFolderInputRef.current?.click();
-                      }}
-                    >
-                      <Icon name="folder" />
-                      <span>Folder</span>
-                    </button>
-                  </div>
-                )}
-              </div>
 
-              <button
-                type="button"
-                className="game-action-button danger"
-                onClick={() => {
-                  setActionsOpen(false);
-                  onDelete(game);
-                }}
-              >
-                <Icon name="trash" />
-                <span>Delete</span>
-              </button>
-            </div>,
-            document.body,
-          )}
+                <div
+                  className="game-import-action"
+                  onMouseEnter={() => {
+                    if (canImportSaves) setImportChoicesVisible(true);
+                  }}
+                  onMouseLeave={() => setImportChoicesVisible(false)}
+                >
+                  <button
+                    type="button"
+                    className="game-action-button has-submenu"
+                    disabled={!canImportSaves}
+                    title={
+                      canImportSaves ? "Import save" : importUnavailableReason
+                    }
+                    aria-haspopup="menu"
+                    aria-expanded={canImportSaves && importChoicesVisible}
+                    onClick={() => setImportChoicesVisible(true)}
+                    onFocus={() => setImportChoicesVisible(true)}
+                  >
+                    <Icon name="upload" />
+                    <span>Import save</span>
+                  </button>
+                  {canImportSaves && importChoicesVisible && (
+                    <div
+                      className={`game-import-submenu${
+                        importSubmenuLeft ? " open-left" : ""
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        className="game-action-button"
+                        onClick={() => {
+                          setActionsOpen(false);
+                          saveFileInputRef.current?.click();
+                        }}
+                      >
+                        <Icon name="archive" />
+                        <span>File or ZIP</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="game-action-button"
+                        onClick={() => {
+                          setActionsOpen(false);
+                          saveFolderInputRef.current?.click();
+                        }}
+                      >
+                        <Icon name="folder" />
+                        <span>Folder</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  className="game-action-button danger"
+                  disabled={game.favorite}
+                  title={
+                    game.favorite
+                      ? "Remove from favorites before deleting this game"
+                      : "Delete game"
+                  }
+                  onClick={() => {
+                    setActionsOpen(false);
+                    onDelete(game);
+                  }}
+                >
+                  <Icon name="trash" />
+                  <span>Delete</span>
+                </button>
+              </div>,
+              document.body,
+            )}
+        </div>
       </div>
 
       <input

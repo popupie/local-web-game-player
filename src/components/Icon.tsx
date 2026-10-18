@@ -14,6 +14,7 @@ type IconName =
   | "moreVertical"
   | "plus"
   | "shield"
+  | "star"
   | "trash"
   | "upload"
   | "x";
@@ -99,6 +100,9 @@ export function Icon({ name }: { name: IconName }) {
         <path d="M12 3 19 6v5c0 4.5-2.9 8.3-7 10-4.1-1.7-7-5.5-7-10V6l7-3Z" />
         <path d="M9 12l2 2 4-4" />
       </>
+    ),
+    star: (
+      <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z" />
     ),
     trash: (
       <>

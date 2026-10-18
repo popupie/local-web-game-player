@@ -68,6 +68,7 @@ export default function App() {
           void controller.setDictionaryGuard(game, guard)
         }
         setRecordingGuardTrigger={controller.setRecordingGuardTrigger}
+        toggleFavorite={(game) => void library.toggleFavorite(game)}
         storage={library.storage}
         zipInputRef={zipInputRef}
       />
