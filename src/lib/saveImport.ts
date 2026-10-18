@@ -17,6 +17,7 @@ import {
 import { storageNamespace } from "@/src/lib/keys";
 import { normalizeStoredPath } from "@/src/lib/paths";
 import { cocosIndexedDbWritesForImport } from "@/src/engines/cocos/save";
+import { importConstruct2Saves } from "@/src/engines/construct2/save";
 import { detectGameEngine } from "@/src/engines/detect";
 import {
   RPG_MAKER_SAVE_DATABASE,
@@ -25,6 +26,7 @@ import {
   rpgMakerLocalStorageKeyForImport,
 } from "@/src/engines/rpgmaker_mvmz/save";
 import { tyranoLocalStorageEntryForImport } from "@/src/engines/tyrano/save";
+import { importWolfSaves } from "@/src/engines/wolf/save";
 import type {
   GameEngine,
   IndexedDbWrite,
@@ -67,6 +69,7 @@ export interface SaveImportOptions {
   beforeCommit?: () => void | Promise<void>;
   confirmOverwrite?: (collisionCount: number) => boolean | Promise<boolean>;
   factory?: IDBFactory;
+  runtimeFrame?: HTMLIFrameElement;
   storage?: Storage;
 }
 
@@ -485,7 +488,10 @@ function importPathForEngine(
   entry: LoadedSaveEntry,
 ): string {
   if (!entry.singleFile) return entry.path;
-  if (engine === "rpg-maker") return `save/${entry.path}`;
+  if (engine === "rpg-maker" || engine === "construct-2") {
+    return `save/${entry.path}`;
+  }
+  if (engine === "wolf") return `Save/${entry.path}`;
   return entry.path;
 }
 
@@ -966,11 +972,21 @@ async function importLoadedSaves(
   } catch {
     // A valid backup manifest still provides a safe fallback classification.
   }
+  const runtimeEntries = entries.map((entry) => ({
+    path: importPathForEngine(engine, entry),
+    bytes: entry.bytes,
+  }));
   if (engine === "wolf") {
-    throw new Error("WOLF RPG save import is not supported yet.");
+    return importWolfSaves(game, runtimeEntries, {
+      confirmOverwrite: options.confirmOverwrite,
+      frame: options.runtimeFrame,
+    });
   }
   if (engine === "construct-2") {
-    throw new Error("Construct 2 save import is not supported yet.");
+    return importConstruct2Saves(game, runtimeEntries, {
+      confirmOverwrite: options.confirmOverwrite,
+      frame: options.runtimeFrame,
+    });
   }
   const bufferedStorage = new BufferedStorage(storage);
   const indexedDbWrites = collectImportWrites(

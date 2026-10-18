@@ -3358,6 +3358,288 @@
     }, ENCRYPTION_FALLBACK_INSTALL_INTERVAL_MS);
   }
 
+  // player-runtime/engines/construct2/saveImport.ts
+  var DATABASE_NAME = "_C2SaveStates";
+  var STORE_NAME = "saves";
+  var RUNTIME_DISCOVERY_TIMEOUT_MS = 15e3;
+  var RUNTIME_DISCOVERY_INTERVAL_MS = 50;
+  function postParent2(message) {
+    window.parent.postMessage(message, window.location.origin);
+  }
+  function normalizePath(path) {
+    const parts = [];
+    for (const part of path.replaceAll("\\", "/").split("/")) {
+      if (!part || part === ".") continue;
+      if (part === "..") {
+        parts.pop();
+        continue;
+      }
+      parts.push(part);
+    }
+    return parts.join("/");
+  }
+  function slotForPath(path) {
+    const match = /^save\/(.+)\.json$/iu.exec(normalizePath(path));
+    if (!match) return void 0;
+    try {
+      return decodeURIComponent(match[1]);
+    } catch {
+      throw new Error(`Invalid encoded Construct 2 save slot: ${match[1]}`);
+    }
+  }
+  function textFromEntry(entry) {
+    const text = new TextDecoder().decode(entry.data);
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed?.c2save !== true) throw new Error();
+    } catch {
+      throw new Error(`Invalid Construct 2 save data: ${entry.path}`);
+    }
+    return text;
+  }
+  function savesFromEntries(entries) {
+    const saves = /* @__PURE__ */ new Map();
+    for (const entry of entries) {
+      const slot = slotForPath(entry.path);
+      if (!slot) {
+        throw new Error(`Invalid Construct 2 save path: ${entry.path}`);
+      }
+      saves.set(slot, { slot, data: textFromEntry(entry) });
+    }
+    return Array.from(saves.values());
+  }
+  function requestResult(request) {
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error ?? new Error("Construct 2 save storage failed."));
+    });
+  }
+  function transactionDone(transaction) {
+    return new Promise((resolve, reject) => {
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(
+        transaction.error ?? new Error("Construct 2 save storage failed.")
+      );
+      transaction.onabort = transaction.onerror;
+    });
+  }
+  function wait(milliseconds) {
+    return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+  }
+  function actionParameter(action, index) {
+    try {
+      return action.parameters?.[index]?.get(0);
+    } catch {
+      return void 0;
+    }
+  }
+  function metadataWritesForSaves(runtime, globals, saves) {
+    const saveState = globals.cr?.system_object?.prototype?.acts?.SaveState;
+    const setVariable = globals.cr?.system_object?.prototype?.acts?.SetVar;
+    const setItem = globals.cr?.plugins_?.LocalStorage?.prototype?.acts?.SetItem;
+    if (!saveState || !setItem) return [];
+    const importedSlots = new Set(saves.map((save) => save.slot));
+    const writes = /* @__PURE__ */ new Map();
+    for (const action of Object.values(runtime.actsBySid ?? {})) {
+      if (action.func !== saveState || !importedSlots.has(String(actionParameter(action, 0) ?? ""))) {
+        continue;
+      }
+      const siblings = action.block?.actions ?? [];
+      const saveIndex = siblings.indexOf(action);
+      for (let index = saveIndex + 1; index < siblings.length; index += 1) {
+        const sibling = siblings[index];
+        if (sibling.func !== setItem) continue;
+        const key = actionParameter(sibling, 0);
+        const value = actionParameter(sibling, 1);
+        if (typeof key !== "string" || !key || typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
+          continue;
+        }
+        const variables = siblings.slice(saveIndex + 1, index).filter(
+          (candidate) => candidate.func === setVariable && actionParameter(candidate, 1) === value
+        ).map((candidate) => actionParameter(candidate, 0)).filter(
+          (variable) => typeof variable?.setValue === "function"
+        );
+        const existing = writes.get(key);
+        writes.set(key, {
+          key,
+          value,
+          variables: [...existing?.variables ?? [], ...variables]
+        });
+      }
+    }
+    return Array.from(writes.values());
+  }
+  async function restoreSaveAvailabilityMetadata(saves) {
+    const globals = window;
+    const deadline = Date.now() + RUNTIME_DISCOVERY_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      const runtime = globals.cr_getC2Runtime?.();
+      if (runtime?.actsBySid && Object.keys(runtime.actsBySid).length > 0) {
+        const writes = metadataWritesForSaves(runtime, globals, saves);
+        if (writes.length === 0) return;
+        if (!globals.localforage) {
+          await wait(RUNTIME_DISCOVERY_INTERVAL_MS);
+          continue;
+        }
+        await Promise.all(
+          writes.map(
+            ({ key, value }) => Promise.resolve(globals.localforage?.setItem(key, value))
+          )
+        );
+        for (const { value, variables } of writes) {
+          for (const variable of variables) variable.setValue(value);
+        }
+        return;
+      }
+      await wait(RUNTIME_DISCOVERY_INTERVAL_MS);
+    }
+  }
+  async function restoreStoredSaveAvailabilityMetadata() {
+    const globals = window;
+    const deadline = Date.now() + RUNTIME_DISCOVERY_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      const runtime = globals.cr_getC2Runtime?.();
+      if (runtime?.actsBySid && Object.keys(runtime.actsBySid).length > 0) {
+        const saves = await storedSaves();
+        if (saves.length > 0) await restoreSaveAvailabilityMetadata(saves);
+        return;
+      }
+      await wait(RUNTIME_DISCOVERY_INTERVAL_MS);
+    }
+  }
+  function openSaveDatabase() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(DATABASE_NAME);
+      request.onupgradeneeded = () => {
+        const database = request.result;
+        if (!database.objectStoreNames.contains(STORE_NAME)) {
+          database.createObjectStore(STORE_NAME, { keyPath: "slot" });
+        }
+      };
+      request.onsuccess = () => {
+        request.result.onversionchange = () => request.result.close();
+        resolve(request.result);
+      };
+      request.onerror = () => reject(
+        request.error ?? new Error("Could not open Construct 2 save storage.")
+      );
+      request.onblocked = () => reject(new Error("Close other player tabs before importing saves."));
+    });
+  }
+  async function collisionCount(saves) {
+    const database = await openSaveDatabase();
+    try {
+      const transaction = database.transaction(STORE_NAME, "readonly");
+      const store = transaction.objectStore(STORE_NAME);
+      const done = transactionDone(transaction);
+      const collisions = await Promise.all(
+        saves.map(async (save) => {
+          const indexedDbRecord = await requestResult(store.getKey(save.slot));
+          return indexedDbRecord !== void 0 || window.localStorage.getItem(`__c2save_${save.slot}`) !== null;
+        })
+      );
+      await done;
+      return collisions.filter(Boolean).length;
+    } finally {
+      database.close();
+    }
+  }
+  async function storedSaves() {
+    const database = await openSaveDatabase();
+    try {
+      const transaction = database.transaction(STORE_NAME, "readonly");
+      const done = transactionDone(transaction);
+      const records = await requestResult(
+        transaction.objectStore(STORE_NAME).getAll()
+      );
+      await done;
+      return records.filter(
+        (record) => typeof record?.slot === "string" && typeof record?.data === "string"
+      );
+    } finally {
+      database.close();
+    }
+  }
+  async function commitSaves(saves) {
+    const database = await openSaveDatabase();
+    try {
+      const transaction = database.transaction(STORE_NAME, "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
+      for (const save of saves) store.put(save);
+      await transactionDone(transaction);
+    } finally {
+      database.close();
+    }
+    for (const save of saves) {
+      window.localStorage.setItem(`__c2save_${save.slot}`, save.data);
+    }
+    await restoreSaveAvailabilityMetadata(saves);
+  }
+  function installConstruct2SaveImportBridge(gameId) {
+    const prepared = /* @__PURE__ */ new Map();
+    void restoreStoredSaveAvailabilityMetadata().catch(() => {
+    });
+    window.addEventListener("message", (event) => {
+      if (event.origin !== window.location.origin || event.source !== window.parent || !event.data || event.data.gameId !== gameId || event.data.engine !== "construct-2") {
+        return;
+      }
+      const message = event.data;
+      if (message.type === "save-import-probe") {
+        postParent2({
+          type: "save-import-ready",
+          requestId: message.requestId,
+          gameId,
+          engine: "construct-2"
+        });
+        return;
+      }
+      if (message.type === "save-import-abort") {
+        prepared.delete(message.requestId);
+        return;
+      }
+      void (async () => {
+        try {
+          if (message.type === "save-import-prepare") {
+            const saves = savesFromEntries(message.entries);
+            const collisions = await collisionCount(saves);
+            prepared.set(message.requestId, saves);
+            postParent2({
+              type: "save-import-prepared",
+              requestId: message.requestId,
+              gameId,
+              engine: "construct-2",
+              collisionCount: collisions,
+              importedEntries: saves.length
+            });
+            return;
+          }
+          if (message.type === "save-import-commit") {
+            const saves = prepared.get(message.requestId);
+            if (!saves) throw new Error("The Construct 2 import session expired.");
+            await commitSaves(saves);
+            prepared.delete(message.requestId);
+            postParent2({
+              type: "save-import-complete",
+              requestId: message.requestId,
+              gameId,
+              engine: "construct-2",
+              importedEntries: saves.length
+            });
+          }
+        } catch (cause) {
+          prepared.delete(message.requestId);
+          postParent2({
+            type: "save-import-error",
+            requestId: message.requestId,
+            gameId,
+            engine: "construct-2",
+            message: cause instanceof Error ? cause.message : String(cause)
+          });
+        }
+      })();
+    });
+  }
+
   // shared/indexedDbSaveTracking.ts
   var INDEXED_DB_MARKER_PREFIX = "__mz_player_indexeddb:";
   var INDEXED_DB_SCOPE_PREFIX = "__mz_player_game_db:";
@@ -3443,6 +3725,7 @@
     const prefix = `mz-player:${config.gameId}:`;
     trackIndexedDbDatabases(prefix);
     patchLocalStorage(prefix);
+    installConstruct2SaveImportBridge(config.gameId);
     const overlay = createTextOverlayBridge({
       config,
       postParentMessage,

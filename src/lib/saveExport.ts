@@ -241,7 +241,13 @@ export async function indexedDbNamesForGame(
     ) {
       names.add(CONSTRUCT2_SAVE_DATABASE);
     }
-    return Array.from(names).filter(isConstructSaveDatabase).sort();
+    return Array.from(names)
+      .filter(
+        (name) =>
+          isConstructSaveDatabase(name) ||
+          name === RPG_MAKER_SAVE_DATABASE,
+      )
+      .sort();
   }
 
   if (engine === "rpg-maker") {

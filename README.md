@@ -25,9 +25,9 @@ project and is not included with this app.
 | Engine          | Compatible input                                                            | Overlay and text log | Save backup | Save import | Engine-specific support                                                         |
 | --------------- | --------------------------------------------------------------------------- | -------------------- | ----------- | ----------- | ------------------------------------------------------------------------------- |
 | RPG Maker MV/MZ | Web export or extracted NW.js game                                          | Yes                  | Yes         | Yes         | Standard encrypted image/audio assets and common NW.js/Node APIs                |
-| WOLF RPG        | Supports web exports from [wolftools](https://github.com/popupie/wolftools) | No                   | I cant test | No          | Browser Woditor playback, lazy asset loading, canvas sizing, and input handling |
+| WOLF RPG        | Supports web exports from [wolftools](https://github.com/popupie/wolftools) | No                   | Yes         | Yes         | Browser Woditor playback, lazy asset loading, canvas sizing, and input handling |
 | TyranoScript    | Web export or extracted desktop game, as a folder or ZIP                    | Yes                  | Yes         | Yes         | Desktop file-save configuration is redirected to browser storage                |
-| Construct 2     | Web export or extracted `package.nw`                                        | Yes                  | I cant test | No          | Common NW.js/Node APIs                                                          |
+| Construct 2     | Web export or extracted `package.nw`                                        | Yes                  | Yes         | Yes         | Common NW.js/Node APIs                                                          |
 | Cocos Creator   | Web export or extracted Electron app, as a folder or ZIP                    | Yes                  | Yes         | Yes         | Common Electron/Node APIs                                                       |
 
 Compatibility can still vary when a game or plugin relies

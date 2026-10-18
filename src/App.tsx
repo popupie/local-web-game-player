@@ -24,7 +24,15 @@ export default function App() {
         notice={library.notice}
         clearStorage={() => void library.clearStorage()}
         downloadSaves={(game) => void library.downloadSaves(game)}
-        importSaves={(game, files) => void library.importSaves(game, files)}
+        importSaves={(game, files) =>
+          void library.importSaves(
+            game,
+            files,
+            library.activeGame?.id === game.id
+              ? player.frameRef.current ?? undefined
+              : undefined,
+          )
+        }
         openFolder={() => {
           if (library.canUseLocalFolderAccess) {
             void library.openLocalFolder();

@@ -4,6 +4,8 @@ const SAVE_IMPORT_ENGINES = new Set<GameEngine>([
   "rpg-maker",
   "tyrano",
   "cocos",
+  "wolf",
+  "construct-2",
 ]);
 
 export function supportsSaveImport(engine: GameEngine | undefined): boolean {
@@ -14,9 +16,5 @@ export function saveImportUnavailableReason(
   engine: GameEngine | undefined,
 ): string {
   if (engine === undefined) return "Checking save import support…";
-  if (engine === "wolf") return "Save import is not supported for WOLF RPG.";
-  if (engine === "construct-2") {
-    return "Save import is not supported for Construct 2.";
-  }
   return "Save import is unavailable for this game engine.";
 }

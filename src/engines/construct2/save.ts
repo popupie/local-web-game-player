@@ -1,4 +1,11 @@
 import type { IndexedDbRecord } from "@/src/lib/saveTypes";
+import {
+  createSaveImportFrame,
+  importSavesThroughRuntime,
+  type RuntimeSaveEntry,
+  type RuntimeSaveImportResult,
+} from "@/src/lib/runtimeSaveImport";
+import type { GameRecord } from "@/src/lib/types";
 
 export const CONSTRUCT2_SAVE_DATABASE = "_C2SaveStates";
 
@@ -32,5 +39,26 @@ function safeSaveSlot(value: string): string {
       0,
       180,
     );
+  }
+}
+
+export async function importConstruct2Saves(
+  game: GameRecord,
+  entries: RuntimeSaveEntry[],
+  options: {
+    confirmOverwrite?: (collisionCount: number) => boolean | Promise<boolean>;
+    frame?: HTMLIFrameElement;
+  } = {},
+): Promise<RuntimeSaveImportResult> {
+  const ownsFrame = !options.frame;
+  const frame = options.frame ?? createSaveImportFrame(game);
+  if (ownsFrame) document.body.append(frame);
+  try {
+    return await importSavesThroughRuntime(game, "construct-2", entries, {
+      confirmOverwrite: options.confirmOverwrite,
+      frame,
+    });
+  } finally {
+    if (ownsFrame) frame.remove();
   }
 }

@@ -435,7 +435,11 @@ export function useGameLibrary(onImportStart?: () => void) {
     }
   }
 
-  async function importSaves(game: GameRecord, files: File[]) {
+  async function importSaves(
+    game: GameRecord,
+    files: File[],
+    runtimeFrame?: HTMLIFrameElement,
+  ) {
     setError(null);
     setNotice(null);
     try {
@@ -465,6 +469,7 @@ export function useGameLibrary(onImportStart?: () => void) {
               collisionCount === 1 ? "entry" : "entries"
             } for ${game.title} will be overwritten. Continue?`,
           ),
+        runtimeFrame,
       };
       const result = isFolder
         ? await importSaveFolder(game, files, importOptions)

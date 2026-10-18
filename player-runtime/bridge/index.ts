@@ -6,6 +6,7 @@ import { patchLocalStorage } from "@/player-runtime/bridge/storageNamespace";
 import { createTextOverlayBridge } from "@/player-runtime/bridge/overlay";
 import { createViewportBridge } from "@/player-runtime/bridge/viewport";
 import { installRpgMakerEncryptionFallback } from "@/player-runtime/engines/rpgmaker_mvmz/encryption";
+import { installConstruct2SaveImportBridge } from "@/player-runtime/engines/construct2/saveImport";
 import { trackIndexedDbDatabases } from "@/shared/indexedDbSaveTracking";
 
 (() => {
@@ -19,6 +20,7 @@ import { trackIndexedDbDatabases } from "@/shared/indexedDbSaveTracking";
 
   trackIndexedDbDatabases(prefix);
   patchLocalStorage(prefix);
+  installConstruct2SaveImportBridge(config.gameId);
 
   const overlay = createTextOverlayBridge({
     config,

@@ -6,8 +6,8 @@ const BLOB_STORE = "blobs";
 const HANDLE_STORE = "handles";
 
 const PLAYER_DESKTOP_RUNTIME_VERSION = "desktop-api-10";
-const PLAYER_BRIDGE_RUNTIME_VERSION = "bridge-api-16";
-const PLAYER_WOLF_RUNTIME_VERSION = "wolf-compat-12";
+const PLAYER_BRIDGE_RUNTIME_VERSION = "bridge-api-17";
+const PLAYER_WOLF_RUNTIME_VERSION = "wolf-compat-13";
 const SESSION_FILE_TIMEOUT_MS = 10000;
 const EMPTY_SOURCE_MAP_TEXT = '{"version":3,"sources":[],"mappings":""}';
 const RPG_MAKER_ENCRYPTED_HEADER_BYTES = Uint8Array.from([
