@@ -5,19 +5,6 @@ type WolfPlayerConfig = {
   settings?: WolfPlayerSettings;
 };
 
-type WolfAsset = {
-  path: string;
-  url: string;
-  size: number;
-};
-
-type WolfAssetResponse = {
-  type: "wolf-assets-response";
-  requestId: string;
-  assets?: WolfAsset[];
-  error?: string;
-};
-
 import { normalizeWolfPath, wolfPathKeys } from "@/player-runtime/engines/wolf/path";
 import { installWolfCompatibility } from "@/player-runtime/engines/wolf/compatibility";
 import type { WolfPlayerSettings } from "@/player-runtime/engines/wolf/compatibility";
@@ -26,6 +13,7 @@ import {
   type WolfRuntimeModule,
 } from "@/player-runtime/engines/wolf/saveImport";
 import { trackIndexedDbDatabases } from "@/shared/indexedDbSaveTracking";
+import type { WolfAsset, WolfParentToPlayerMessage } from "@/src/engines/wolf/messages";
 
 declare const Module: WolfRuntimeModule;
 declare const FS: {
@@ -62,7 +50,7 @@ function requestAssets(settings: WolfPlayerConfig): Promise<WolfAsset[]> {
       reject(new Error("The browser player took too long to prepare WOLF assets."));
     }, 30000);
 
-    function onMessage(event: MessageEvent<WolfAssetResponse>) {
+    function onMessage(event: MessageEvent<WolfParentToPlayerMessage>) {
       const message = event.data;
       if (
         event.origin !== window.location.origin ||
@@ -186,6 +174,9 @@ function installAssetLoader(assets: WolfAsset[]) {
       load(path);
       return originalLstat.apply(FS, arguments as unknown as []);
     };
+    for (const asset of assets) {
+      if (asset.preload) load(asset.path);
+    }
   });
 }
 

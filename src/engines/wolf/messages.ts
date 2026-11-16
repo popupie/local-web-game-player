@@ -1,3 +1,10 @@
+export type WolfAsset = {
+  path: string;
+  url: string;
+  size: number;
+  preload?: boolean;
+};
+
 export type WolfPlayerToParentMessage = {
   type: "wolf-assets-request";
   gameId: string;
@@ -7,6 +14,6 @@ export type WolfPlayerToParentMessage = {
 export type WolfParentToPlayerMessage = {
   type: "wolf-assets-response";
   requestId: string;
-  assets?: Array<{ path: string; url: string; size: number }>;
+  assets?: WolfAsset[];
   error?: string;
 };

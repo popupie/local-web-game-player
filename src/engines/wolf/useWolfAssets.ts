@@ -32,7 +32,7 @@ export function useWolfAssets({
       void current.promise.then((value) => value.release(), () => undefined);
     }
 
-    const promise = createWolfAssetObjectUrls(game.id);
+    const promise = createWolfAssetObjectUrls(game);
     assetsRef.current = { key: game.id, promise };
     return promise;
   }

@@ -62,7 +62,7 @@ export async function importWolfSaves(
     ) {
       return;
     }
-    assetsPromise ??= createWolfAssetObjectUrls(game.id);
+    assetsPromise ??= createWolfAssetObjectUrls(game);
     void assetsPromise.then(
       (value) => {
         (event.source as Window).postMessage(

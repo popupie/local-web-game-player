@@ -7,24 +7,16 @@ import {
   type BrowserFileSystemDirectoryHandle,
 } from "@/src/lib/storage";
 import { normalizeStoredPath } from "@/src/lib/paths";
-import type { StoredGameFile } from "@/src/lib/types";
-
-type WolfAssetObjectUrl = {
-  path: string;
-  url: string;
-  size: number;
-};
+import type { GameRecord, StoredGameFile } from "@/src/lib/types";
+import type { WolfAsset } from "@/src/engines/wolf/messages";
 
 export type WolfAssetObjectUrlSet = {
-  assets: WolfAssetObjectUrl[];
+  assets: WolfAsset[];
   release(): void;
 };
 
 const FILE_READ_CONCURRENCY = 32;
-
-function isLooseWolfAsset(path: string): boolean {
-  return normalizeStoredPath(path).toLowerCase().startsWith("data/");
-}
+const COMBINED_DATA_ERROR = "Open the full combined WOLF game folder or ZIP containing both web/ and Data/.";
 
 async function concurrentMap<T, R>(
   values: T[],
@@ -78,25 +70,25 @@ function localFolderReader(root: BrowserFileSystemDirectoryHandle) {
   };
 }
 
-export async function createWolfAssetObjectUrls(gameId: string): Promise<WolfAssetObjectUrlSet> {
-  const records = (await getStoredFilesForGame(gameId)).filter((record) =>
-    isLooseWolfAsset(record.path),
-  );
-  if (records.length === 0) {
-    throw new Error("This WOLF export has no loose Data files.");
-  }
-
-  const indexedRecords = records.filter((record) => record.storageKind === "indexeddb");
-  const indexedBlobs = await getIndexedDbBlobs(
-    indexedRecords.map((record) => record.storageRef),
-  );
+export async function createWolfAssetObjectUrls(
+  { id: gameId, entryPath }: Pick<GameRecord, "id" | "entryPath">,
+): Promise<WolfAssetObjectUrlSet> {
+  const records = await getStoredFilesForGame(gameId);
+  const normalizedEntry = normalizeStoredPath(entryPath);
+  const exportRoot = normalizedEntry.slice(0, normalizedEntry.lastIndexOf("/") + 1);
   const localFolderHandle = records.some((record) => record.storageKind === "local-folder")
     ? await getLocalFolderHandle(gameId)
     : undefined;
   const readLocalFolder = localFolderHandle ? localFolderReader(localFolderHandle) : undefined;
 
-  async function readBlob(record: StoredGameFile): Promise<Blob | undefined> {
-    if (record.storageKind === "indexeddb") return indexedBlobs.get(record.storageRef);
+  async function readBlob(
+    record: StoredGameFile,
+    indexedBlobs?: Map<string, Blob>,
+  ): Promise<Blob | undefined> {
+    if (record.storageKind === "indexeddb") {
+      const blobs = indexedBlobs ?? await getIndexedDbBlobs([record.storageRef]);
+      return blobs.get(record.storageRef);
+    }
     if (record.storageKind === "opfs") return getOpfsBlob(gameId, record.path);
     if (record.storageKind === "local-folder") {
       return readLocalFolder?.(record.storageRef || record.path);
@@ -107,14 +99,64 @@ export async function createWolfAssetObjectUrls(gameId: string): Promise<WolfAss
     return undefined;
   }
 
+  async function readExportJson<T>(name: string): Promise<T | undefined> {
+    const path = (exportRoot + name).toLowerCase();
+    const record = records.find((file) => normalizeStoredPath(file.path).toLowerCase() === path);
+    const blob = record && await readBlob(record);
+    if (!blob) return undefined;
+    const text = await blob.text();
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      return undefined;
+    }
+  }
+
+  const metadata = await readExportJson<{
+    layout?: string;
+    data?: { shared?: boolean; assetBase?: string };
+  }>("browser-game.json");
+  const shared = metadata?.layout === "combined" ||
+    metadata?.data?.shared === true || metadata?.data?.assetBase === "../";
+  if (shared && !exportRoot) throw new Error(COMBINED_DATA_ERROR);
+
+  // A combined export's assets live one level above its entry page.
+  const assetRoot = shared ? exportRoot.replace(/[^/]+\/$/u, "") : exportRoot;
+  const lowerAssetRoot = assetRoot.toLowerCase();
+  const manifest = shared ? await readExportJson<{ preload?: unknown }>("asset_manifest.json") : undefined;
+  const preloadPaths = new Set<string>();
+  if (Array.isArray(manifest?.preload)) {
+    for (const path of manifest.preload) {
+      if (typeof path === "string" && !/[/\\]/u.test(path)) {
+        preloadPaths.add(path.toLowerCase());
+      }
+    }
+  }
+
+  const looseFiles = records.flatMap((record) => {
+    const storedPath = normalizeStoredPath(record.path);
+    if (!storedPath.toLowerCase().startsWith(lowerAssetRoot)) return [];
+    const path = storedPath.slice(assetRoot.length);
+    const lowerPath = path.toLowerCase();
+    const isDataFile = lowerPath.startsWith("data/");
+    const preload = preloadPaths.has(lowerPath);
+    return isDataFile || preload ? [{ record, path, isDataFile, preload }] : [];
+  });
+  if (!looseFiles.some((file) => file.isDataFile)) {
+    throw new Error(shared ? COMBINED_DATA_ERROR : "This WOLF export has no loose Data files.");
+  }
+  const indexedBlobs = await getIndexedDbBlobs(looseFiles
+    .filter(({ record }) => record.storageKind === "indexeddb")
+    .map(({ record }) => record.storageRef));
+
   const objectUrls: string[] = [];
   try {
-    const assets = await concurrentMap(records, async (record) => {
-      const blob = await readBlob(record);
+    const assets = await concurrentMap(looseFiles, async ({ record, path, preload }) => {
+      const blob = await readBlob(record, indexedBlobs);
       if (!blob) throw new Error(`Could not read WOLF asset: ${record.path}`);
       const url = URL.createObjectURL(blob);
       objectUrls.push(url);
-      return { path: normalizeStoredPath(record.path), url, size: blob.size };
+      return { path, url, size: blob.size, ...(preload ? { preload } : {}) };
     });
     return {
       assets,
