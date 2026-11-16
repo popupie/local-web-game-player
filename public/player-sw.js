@@ -950,6 +950,14 @@ function adaptSteam4C2Bridge(text) {
   );
 }
 
+function adaptWoditorScript(text) {
+  // Emscripten otherwise selects Node mode when a page provides a process shim.
+  return text.replace(
+    /\bENVIRONMENT_IS_NODE\s*=\s*(?=globalThis\.process\?\.versions\?\.node\b)/u,
+    "$&!globalThis.window&&!globalThis.WorkerGlobalScope&&",
+  );
+}
+
 async function transformAssetBlobForRequest(
   gameId,
   match,
@@ -1071,7 +1079,11 @@ async function serveGameFile(url, request) {
     request.clientId,
   );
   if (transformed.error) return transformed.error;
-  const responseBlob = transformed.blob;
+  const responseBlob = /(?:^|\/)woditor\.js$/iu.test(normalizePath(record.path))
+    ? new Blob([adaptWoditorScript(await transformed.blob.text())], {
+        type: transformed.blob.type,
+      })
+    : transformed.blob;
   const contentType =
     transformed.mime ||
     record.mime ||
