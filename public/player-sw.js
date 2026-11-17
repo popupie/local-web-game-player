@@ -953,7 +953,7 @@ function adaptSteam4C2Bridge(text) {
 function adaptWoditorScript(text) {
   // Emscripten otherwise selects Node mode when a page provides a process shim.
   return text.replace(
-    /\bENVIRONMENT_IS_NODE\s*=\s*(?=globalThis\.process\?\.versions\?\.node\b)/u,
+    /\bENVIRONMENT_IS_NODE\s*=\s*(?=globalThis\.process\?\.versions\?\.node\b|typeof\s+process\s*={2,3}\s*["']object["']\s*&&)/u,
     "$&!globalThis.window&&!globalThis.WorkerGlobalScope&&",
   );
 }
